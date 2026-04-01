@@ -14,7 +14,9 @@ describe('App (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -30,7 +32,7 @@ describe('App (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({ username: 'admin', password: 'admin' })
       .expect(201)
-      .expect((res) => {
+      .expect((res: { body: { access_token: string } }) => {
         expect(res.body.access_token).toBeDefined();
       });
   });

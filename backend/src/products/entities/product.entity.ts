@@ -1,6 +1,14 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Recipe } from '../../inventory/entities/recipe.entity';
 import { OrderItem } from '../../orders/entities/order-item.entity';
+import { Category } from './category.entity';
 
 @Entity('products')
 export class Product {
@@ -21,6 +29,10 @@ export class Product {
 
   @Column({ default: true })
   is_active: boolean;
+
+  @ManyToOne(() => Category, (category) => category.products)
+  @JoinColumn({ name: 'category_id' })
+  category: Category;
 
   @OneToMany(() => Recipe, (recipe) => recipe.product)
   recipes: Recipe[];

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -19,9 +19,13 @@ export class CreateOrderItemDto {
   @Min(1)
   qty: number;
 
-  @ApiProperty({ example: 150.0 })
+  @ApiPropertyOptional({
+    example: 150.0,
+    description: 'Override price. If omitted, uses product base_price.',
+  })
   @IsNumber()
-  unit_price: number;
+  @IsOptional()
+  unit_price?: number;
 }
 
 export class CreateOrderDto {
@@ -33,7 +37,7 @@ export class CreateOrderDto {
   @IsUUID()
   staff_id: string;
 
-  @ApiProperty({ example: 0, required: false })
+  @ApiPropertyOptional({ example: 0 })
   @IsNumber()
   @IsOptional()
   discount_amount?: number;

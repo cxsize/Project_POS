@@ -1,21 +1,41 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
+import { Repository } from 'typeorm';
 import { LoginDto } from './dto/login.dto';
+import { User } from './entities/user.entity';
 
 @Injectable()
 export class AuthService {
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    @InjectRepository(User)
+    private usersRepository: Repository<User>,
+    private jwtService: JwtService,
+  ) {}
 
-  login(loginDto: LoginDto) {
-    // TODO: Replace with real user validation against database
-    if (loginDto.username === 'admin' && loginDto.password === 'admin') {
-      const payload = {
-        sub: 'admin-uuid',
-        username: loginDto.username,
-        role: 'admin',
-      };
-      return { access_token: this.jwtService.sign(payload) };
+  async login(loginDto: LoginDto) {
+    const user = await this.usersRepository.findOne({
+      where: { username: loginDto.username, is_active: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
     }
-    throw new UnauthorizedException('Invalid credentials');
+
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password_hash,
+    );
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      role: user.role,
+    };
+    return { access_token: this.jwtService.sign(payload) };
   }
 }

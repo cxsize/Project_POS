@@ -10,7 +10,7 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({ summary: 'Authenticate and receive JWT token' })
-  login(@Body() loginDto: LoginDto) {
+  async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
 }

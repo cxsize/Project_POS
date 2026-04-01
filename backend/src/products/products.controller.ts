@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
@@ -53,5 +54,17 @@ export class ProductsController {
   @ApiOperation({ summary: 'Delete a product' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.productsService.remove(id);
+  }
+
+  @Post('categories')
+  @ApiOperation({ summary: 'Create a product category' })
+  createCategory(@Body() dto: CreateCategoryDto) {
+    return this.productsService.createCategory(dto);
+  }
+
+  @Get('categories/all')
+  @ApiOperation({ summary: 'List all categories' })
+  findAllCategories() {
+    return this.productsService.findAllCategories();
   }
 }

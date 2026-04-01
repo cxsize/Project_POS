@@ -50,4 +50,21 @@ export class InventoryService {
       relations: ['ingredient'],
     });
   }
+
+  async deductStock(productId: string, qty: number) {
+    const recipes = await this.recipesRepository.find({
+      where: { product_id: productId },
+      relations: ['ingredient'],
+    });
+
+    for (const recipe of recipes) {
+      const deduction = recipe.usage_qty * qty;
+      await this.ingredientsRepository
+        .createQueryBuilder()
+        .update(Ingredient)
+        .set({ stock_qty: () => `stock_qty - ${deduction}` })
+        .where('id = :id', { id: recipe.ingredient_id })
+        .execute();
+    }
+  }
 }

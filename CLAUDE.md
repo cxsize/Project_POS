@@ -31,12 +31,14 @@ The system is designed as **four decoupled modules**:
 
 Key entities and relationships:
 
-- **products** (id, sku, name, base_price, category_id, is_active)
+- **users** (id, username, password_hash, full_name, role [admin/cashier/manager], branch_id, is_active)
+- **categories** (id, name)
+- **products** (id, sku, name, base_price, category_id → categories, is_active)
 - **ingredients** (id, name, unit, stock_qty, min_alert_qty)
 - **recipes** — joins products to ingredients with usage_qty (Bill of Materials)
 - **orders** (id, order_no, branch_id, staff_id, totals, payment_status, sync_status_acc, created_at)
-- **order_items** (order_id, product_id, qty, unit_price, subtotal)
-- **payments** (order_id, method [cash/qr/credit_card], amount_received, ref_no)
+- **order_items** (order_id → orders, product_id → products, qty, unit_price, subtotal)
+- **payments** (order_id → orders, method [cash/qr/credit_card], amount_received, ref_no)
 
 All primary keys are UUIDs.
 
@@ -61,10 +63,12 @@ All primary keys are UUIDs.
   ├── app.module.ts              # Root module wiring
   ├── config/
   │   └── database.config.ts     # TypeORM PostgreSQL config
+  ├── database/
+  │   └── seed.ts                # Seed script (npm run seed)
   ├── common/
   │   └── guards/                # JwtAuthGuard, ApiKeyGuard
-  ├── auth/                      # JWT login, Passport strategy
-  ├── products/                  # Product CRUD
+  ├── auth/                      # JWT login, Passport strategy, User entity
+  ├── products/                  # Product + Category CRUD
   ├── inventory/                 # Ingredients + Recipes (BOM)
   ├── orders/                    # Orders + OrderItems + Payments
   ├── crm/                       # CRM integration (API Key auth)
@@ -135,6 +139,9 @@ npm run test:e2e
 
 # Format code
 npm run format
+
+# Seed database (creates admin user, sample products, ingredients, recipes)
+npm run seed
 ```
 
 ### Infrastructure
