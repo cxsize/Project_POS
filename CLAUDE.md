@@ -4,7 +4,7 @@
 
 **Lean & Fast Modular POS** — a high-speed retail checkout system targeting 500+ receipts/day with Open API integration for CRM and Accounting.
 
-**Current state:** Specification/planning phase. No source code has been implemented yet. See `README.md` for the full project specification.
+**Current state:** Backend scaffolded with NestJS. Frontend (Flutter) not yet started. See `README.md` for the full project specification.
 
 ## Tech Stack
 
@@ -54,24 +54,27 @@ All primary keys are UUIDs.
 ### Backend (NestJS/TypeScript)
 
 - **File naming:** kebab-case — `orders.controller.ts`, `orders.service.ts`, `orders.module.ts`
-- **Structure:** Feature-based modules under `src/`
+- **Structure:** Feature-based modules under `backend/src/`
   ```
-  src/
-  ├── orders/
-  │   ├── orders.module.ts
-  │   ├── orders.controller.ts
-  │   ├── orders.service.ts
-  │   ├── dto/
-  │   └── entities/
-  ├── products/
-  ├── inventory/
-  ├── crm/
-  ├── accounting/
-  └── auth/
+  backend/src/
+  ├── main.ts                    # App bootstrap, global prefix, Swagger
+  ├── app.module.ts              # Root module wiring
+  ├── config/
+  │   └── database.config.ts     # TypeORM PostgreSQL config
+  ├── common/
+  │   └── guards/                # JwtAuthGuard, ApiKeyGuard
+  ├── auth/                      # JWT login, Passport strategy
+  ├── products/                  # Product CRUD
+  ├── inventory/                 # Ingredients + Recipes (BOM)
+  ├── orders/                    # Orders + OrderItems + Payments
+  ├── crm/                       # CRM integration (API Key auth)
+  └── accounting/                # Accounting sync (API Key auth)
   ```
 - **Naming:** camelCase for variables/methods, PascalCase for classes/interfaces, UPPER_SNAKE_CASE for constants
 - **DTOs** for request validation, **entities** for database models
-- **Authentication:** JWT for internal endpoints, API Key for open API endpoints
+- **Authentication:** JWT (`JwtAuthGuard`) for internal endpoints, API Key (`ApiKeyGuard` via `x-api-key` header) for CRM/Accounting
+- **Swagger docs:** Available at `/api/docs` when the server is running
+- **ORM:** TypeORM with entity auto-discovery; `DB_SYNC=true` for dev auto-migration
 
 ### Frontend (Flutter)
 
@@ -106,21 +109,67 @@ All primary keys are UUIDs.
 
 ## Commands
 
-> **Note:** Build, test, and lint commands will be added here once the project is scaffolded.
+### Backend (NestJS)
 
 ```shell
-# Backend (NestJS) — to be configured
-# npm install
-# npm run start:dev
-# npm run test
-# npm run lint
+cd backend
 
-# Frontend (Flutter) — to be configured
+# Install dependencies
+npm install
+
+# Development server (with hot reload)
+npm run start:dev
+
+# Production build
+npm run build
+npm run start:prod
+
+# Linting
+npm run lint
+
+# Unit tests
+npm run test
+
+# E2E tests (requires running PostgreSQL)
+npm run test:e2e
+
+# Format code
+npm run format
+```
+
+### Infrastructure
+
+```shell
+cd backend
+
+# Start PostgreSQL + Redis via Docker Compose
+docker compose up -d
+
+# Or use local services:
+sudo service postgresql start
+sudo service redis-server start
+
+# Create database (first time only)
+sudo -u postgres psql -c "CREATE USER pos_user WITH PASSWORD 'pos_password';"
+sudo -u postgres psql -c "CREATE DATABASE pos_db OWNER pos_user;"
+```
+
+### Frontend (Flutter) — to be configured
+
+```shell
 # flutter pub get
 # flutter run
 # flutter test
 # flutter analyze
 ```
+
+### Environment Setup
+
+Copy `backend/.env.example` to `backend/.env` and adjust values. Key variables:
+- `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE` — PostgreSQL connection
+- `JWT_SECRET` — secret for signing JWT tokens
+- `OPEN_API_KEY` — API key for CRM/Accounting integration endpoints
+- `DB_SYNC=true` — auto-create tables from entities (development only)
 
 ## Working with This Repo
 
