@@ -4,15 +4,15 @@
 
 **Lean & Fast Modular POS** — a high-speed retail checkout system targeting 500+ receipts/day with Open API integration for CRM and Accounting.
 
-**Current state:** Backend scaffolded with NestJS. Frontend (Flutter) not yet started. See `README.md` for the full project specification.
+**Current state:** Backend fully operational with NestJS (auth, products, orders, payments, inventory/BOM, CRM/accounting stubs). Frontend scaffolded with Flutter + Riverpod (login, checkout, payment, order history screens). See `README.md` for the full project specification.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Flutter (iOS/Android, tablet-optimized) |
-| State Management | Riverpod or BLoC |
-| Local Database | Isar (NoSQL, offline-first) |
+| State Management | Riverpod 3.x (Notifier API) |
+| Local Database | Isar (NoSQL, offline-first) — planned |
 | Backend API | Node.js with NestJS (TypeScript) |
 | Cloud Database | PostgreSQL |
 | Caching/Queue | Redis (background sync, webhooks) |
@@ -85,15 +85,44 @@ All primary keys are UUIDs.
 - **File naming:** snake_case — `checkout_screen.dart`, `order_model.dart`
 - **Structure:**
   ```
-  lib/
-  ├── screens/
-  ├── widgets/
-  ├── services/
+  frontend/lib/
+  ├── main.dart                          # Entry point, ProviderScope + MaterialApp
+  ├── app_theme.dart                     # Material 3 theme (teal seed, Google Fonts)
   ├── models/
-  └── providers/
+  │   ├── user.dart                      # User model (from JWT payload)
+  │   ├── product.dart                   # Product model
+  │   ├── category.dart                  # Category model
+  │   ├── cart_item.dart                 # Client-side cart item
+  │   ├── order.dart                     # Order model with nested items/payments
+  │   ├── order_item.dart                # Order line item
+  │   └── payment.dart                   # Payment record
+  ├── services/
+  │   ├── api_client.dart                # HTTP wrapper with JWT token management
+  │   ├── auth_service.dart              # Login, JWT decode, logout
+  │   ├── product_service.dart           # Products + categories API
+  │   └── order_service.dart             # Orders + payments API
+  ├── providers/
+  │   ├── service_providers.dart          # DI providers for services
+  │   ├── auth_provider.dart             # AuthNotifier (Notifier<AuthState>)
+  │   ├── product_provider.dart          # Products, categories, filtering
+  │   ├── cart_provider.dart             # CartNotifier + computed totals/VAT
+  │   └── order_provider.dart            # OrderNotifier + order history
+  ├── widgets/
+  │   ├── product_tile.dart              # Product grid card
+  │   ├── category_filter_bar.dart       # Horizontal category chips
+  │   ├── cart_item_row.dart             # Cart row with qty controls
+  │   ├── payment_method_selector.dart   # Cash/QR/Card toggle
+  │   └── order_summary_card.dart        # Subtotal/VAT/Net display
+  └── screens/
+      ├── login_screen.dart              # Auth login form
+      ├── checkout_screen.dart           # Main POS: product grid + cart
+      ├── payment_screen.dart            # Payment processing
+      ├── order_history_screen.dart       # Past orders list + detail
+      └── settings_screen.dart           # User info + logout
   ```
-- **State management:** Riverpod or BLoC pattern
-- **Local storage:** Isar for offline-first data persistence
+- **State management:** Riverpod 3.x with `Notifier`/`NotifierProvider` (not legacy `StateNotifier`)
+- **API connection:** Connects to backend at `http://localhost:3000/api/v1`
+- **Theme:** Material 3 with teal color scheme, Google Fonts (Roboto), touch-friendly sizing
 
 ## Non-Functional Requirements
 
@@ -161,13 +190,28 @@ sudo -u postgres psql -c "CREATE USER pos_user WITH PASSWORD 'pos_password';"
 sudo -u postgres psql -c "CREATE DATABASE pos_db OWNER pos_user;"
 ```
 
-### Frontend (Flutter) — to be configured
+### Frontend (Flutter)
 
 ```shell
-# flutter pub get
-# flutter run
-# flutter test
-# flutter analyze
+cd frontend
+
+# Install dependencies
+flutter pub get
+
+# Run on Linux desktop
+flutter run -d linux
+
+# Run on Chrome (web)
+flutter run -d chrome
+
+# Static analysis
+flutter analyze
+
+# Run tests
+flutter test
+
+# Build Linux release
+flutter build linux
 ```
 
 ### Environment Setup
