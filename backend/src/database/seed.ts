@@ -17,7 +17,16 @@ async function seed() {
     username: process.env.DB_USERNAME || 'pos_user',
     password: process.env.DB_PASSWORD || 'pos_password',
     database: process.env.DB_DATABASE || 'pos_db',
-    entities: [User, Category, Product, Ingredient, Recipe, Order, OrderItem, Payment],
+    entities: [
+      User,
+      Category,
+      Product,
+      Ingredient,
+      Recipe,
+      Order,
+      OrderItem,
+      Payment,
+    ],
     synchronize: true,
   });
 
