@@ -11,7 +11,7 @@
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Flutter (iOS/Android, tablet-optimized) |
-| State Management | Riverpod 3.x (Notifier API) |
+| State Management | Riverpod 2.x (StateNotifier API) |
 | Local Database | Isar (NoSQL, offline-first) — planned |
 | Backend API | Node.js with NestJS (TypeScript) |
 | Cloud Database | PostgreSQL |
@@ -120,7 +120,7 @@ All primary keys are UUIDs.
       ├── order_history_screen.dart       # Past orders list + detail
       └── settings_screen.dart           # User info + logout
   ```
-- **State management:** Riverpod 3.x with `Notifier`/`NotifierProvider` (not legacy `StateNotifier`)
+- **State management:** Riverpod 2.x with `StateNotifier`/`StateNotifierProvider`
 - **API connection:** Connects to backend at `http://localhost:3000/api/v1`
 - **Theme:** Material 3 with teal color scheme, Google Fonts (Roboto), touch-friendly sizing
 

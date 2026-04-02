@@ -27,9 +27,10 @@ class AuthState {
   }
 }
 
-class AuthNotifier extends Notifier<AuthState> {
-  @override
-  AuthState build() => const AuthState();
+class AuthNotifier extends StateNotifier<AuthState> {
+  final Ref ref;
+
+  AuthNotifier(this.ref) : super(const AuthState());
 
   Future<void> login(String username, String password) async {
     state = state.copyWith(isLoading: true, error: null);
@@ -48,6 +49,6 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 }
 
-final authProvider = NotifierProvider<AuthNotifier, AuthState>(
-  AuthNotifier.new,
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>(
+  (ref) => AuthNotifier(ref),
 );

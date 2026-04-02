@@ -2,9 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 
-class CartNotifier extends Notifier<List<CartItem>> {
-  @override
-  List<CartItem> build() => [];
+class CartNotifier extends StateNotifier<List<CartItem>> {
+  CartNotifier() : super([]);
 
   void addItem(Product product) {
     final index = state.indexWhere((item) => item.product.id == product.id);
@@ -47,8 +46,8 @@ class CartNotifier extends Notifier<List<CartItem>> {
   void clear() => state = [];
 }
 
-final cartProvider = NotifierProvider<CartNotifier, List<CartItem>>(
-  CartNotifier.new,
+final cartProvider = StateNotifierProvider<CartNotifier, List<CartItem>>(
+  (ref) => CartNotifier(),
 );
 
 final cartTotalProvider = Provider<double>((ref) {

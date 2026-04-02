@@ -23,7 +23,7 @@ class CategoryFilterBar extends ConsumerWidget {
                 label: const Text('All'),
                 selected: selected == null,
                 onSelected: (_) =>
-                    ref.read(selectedCategoryProvider.notifier).select(null),
+                    ref.read(selectedCategoryProvider.notifier).state = null,
               ),
             ),
             ...categories.map(
@@ -33,8 +33,8 @@ class CategoryFilterBar extends ConsumerWidget {
                   label: Text(cat.name),
                   selected: selected == cat.id,
                   onSelected: (_) =>
-                      ref.read(selectedCategoryProvider.notifier).select(
-                          cat.id),
+                      ref.read(selectedCategoryProvider.notifier).state =
+                          cat.id,
                 ),
               ),
             ),

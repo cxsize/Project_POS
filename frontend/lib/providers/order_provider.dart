@@ -18,9 +18,10 @@ class OrderState {
   });
 }
 
-class OrderNotifier extends Notifier<OrderState> {
-  @override
-  OrderState build() => const OrderState();
+class OrderNotifier extends StateNotifier<OrderState> {
+  final Ref ref;
+
+  OrderNotifier(this.ref) : super(const OrderState());
 
   Future<void> submitOrder(List<CartItem> items) async {
     state = const OrderState(isLoading: true);
@@ -62,8 +63,8 @@ class OrderNotifier extends Notifier<OrderState> {
   void reset() => state = const OrderState();
 }
 
-final orderProvider = NotifierProvider<OrderNotifier, OrderState>(
-  OrderNotifier.new,
+final orderProvider = StateNotifierProvider<OrderNotifier, OrderState>(
+  (ref) => OrderNotifier(ref),
 );
 
 final orderHistoryProvider = FutureProvider<List<Order>>((ref) {

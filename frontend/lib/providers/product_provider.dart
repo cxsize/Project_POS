@@ -11,16 +11,7 @@ final productsProvider = FutureProvider<List<Product>>((ref) {
   return ref.read(productServiceProvider).getProducts();
 });
 
-final selectedCategoryProvider = NotifierProvider<SelectedCategoryNotifier, String?>(
-  SelectedCategoryNotifier.new,
-);
-
-class SelectedCategoryNotifier extends Notifier<String?> {
-  @override
-  String? build() => null;
-
-  void select(String? categoryId) => state = categoryId;
-}
+final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 
 final filteredProductsProvider = Provider<List<Product>>((ref) {
   final productsAsync = ref.watch(productsProvider);
