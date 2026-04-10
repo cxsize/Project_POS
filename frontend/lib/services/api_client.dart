@@ -13,9 +13,9 @@ class ApiClient {
   bool get isAuthenticated => _token != null;
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (_token != null) 'Authorization': 'Bearer $_token',
-      };
+    'Content-Type': 'application/json',
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
 
   Future<dynamic> get(String path) async {
     final response = await _client.get(

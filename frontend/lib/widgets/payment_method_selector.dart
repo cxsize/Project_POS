@@ -83,18 +83,22 @@ class _MethodButton extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon,
-                    size: 28,
+                Icon(
+                  icon,
+                  size: 28,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: theme.textTheme.labelLarge?.copyWith(
                     color: isSelected
                         ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface),
-                const SizedBox(height: 4),
-                Text(label,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface,
-                    )),
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
               ],
             ),
           ),

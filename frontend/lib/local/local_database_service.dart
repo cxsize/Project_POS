@@ -1,96 +1,137 @@
-import '../models/local/local_types.dart';
-import '../models/local/order_local.dart';
-import '../models/local/order_item_local.dart';
-import '../models/local/payment_local.dart';
-import '../models/local/product_local.dart';
-import '../models/local/sync_queue_local.dart';
+import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
 
-class LocalDatabaseConfig {
-  final String databaseName;
-  final int schemaVersion;
-  final bool enableDebugLogging;
+import '../models/category.dart';
+import '../models/order.dart';
+import '../models/product.dart';
+import 'models/order_item_local.dart';
+import 'models/order_local.dart';
+import 'models/payment_local.dart';
+import 'models/product_local.dart';
+import 'models/sync_queue_local.dart';
 
-  const LocalDatabaseConfig({
-    this.databaseName = LocalDatabaseMetadata.databaseName,
-    this.schemaVersion = LocalDatabaseMetadata.schemaVersion,
-    this.enableDebugLogging = false,
-  });
-}
+class LocalDatabaseService {
+  LocalDatabaseService();
 
-/// Contract for the local POS store.
-///
-/// The main agent can back this with Isar using the collection names and
-/// entities defined under `models/local/`.
-abstract class LocalDatabaseService {
-  Future<void> initialize({
-    LocalDatabaseConfig config = const LocalDatabaseConfig(),
-  });
+  Isar? _isar;
 
-  bool get isInitialized;
+  Future<Isar> open() async {
+    if (_isar != null && _isar!.isOpen) {
+      return _isar!;
+    }
 
-  Future<void> close();
+    final directory = await getApplicationSupportDirectory();
+    _isar = await Isar.open(
+      [
+        ProductLocalSchema,
+        OrderLocalSchema,
+        OrderItemLocalSchema,
+        PaymentLocalSchema,
+        SyncQueueLocalSchema,
+      ],
+      directory: directory.path,
+      inspector: false,
+    );
+    return _isar!;
+  }
 
-  Future<T> runTransaction<T>(Future<T> Function() action);
+  Future<void> cacheProducts(List<Product> products) async {
+    final isar = await open();
+    final localProducts = products.map(ProductLocal.fromDomain).toList();
 
-  Stream<List<ProductLocal>> watchProducts({
-    String? query,
+    await isar.writeTxn(() async {
+      await isar.productLocals.clear();
+      await isar.productLocals.putAll(localProducts);
+    });
+  }
+
+  Future<List<Product>> searchProducts({
+    String search = '',
     String? categoryId,
-    bool onlyActive = true,
-  });
+  }) async {
+    final isar = await open();
+    final normalizedSearch = search.trim();
 
-  Future<List<ProductLocal>> getProducts({
-    String? query,
-    String? categoryId,
-    bool onlyActive = true,
-  });
+    final query = isar.productLocals.filter();
+    final filtered = query
+        .isActiveEqualTo(true)
+        .optional(
+          categoryId != null && categoryId.isNotEmpty,
+          (q) => q.categoryIdEqualTo(categoryId),
+        )
+        .optional(
+          normalizedSearch.isNotEmpty,
+          (q) => q.group(
+            (group) => group
+                .nameContains(normalizedSearch, caseSensitive: false)
+                .or()
+                .skuContains(normalizedSearch, caseSensitive: false),
+          ),
+        );
 
-  Future<ProductLocal?> getProductById(String id);
+    final localProducts = await filtered.sortByName().findAll();
+    return localProducts.map((product) => product.toDomain()).toList();
+  }
 
-  Future<void> upsertProducts(Iterable<ProductLocal> products);
+  Future<Product?> findProductBySku(String sku) async {
+    final isar = await open();
+    final localProduct = await isar.productLocals
+        .filter()
+        .skuEqualTo(sku.trim(), caseSensitive: false)
+        .findFirst();
 
-  Future<void> deleteProduct(String id);
+    return localProduct?.toDomain();
+  }
 
-  Stream<List<OrderLocal>> watchOrders({int limit = 50});
+  Future<List<Category>> getCategories() async {
+    final isar = await open();
+    final localProducts = await isar.productLocals
+        .filter()
+        .isActiveEqualTo(true)
+        .findAll();
+    final seen = <String>{};
+    final categories = <Category>[];
 
-  Future<List<OrderLocal>> getRecentOrders({int limit = 50});
+    for (final product in localProducts) {
+      final categoryId = product.categoryId;
+      final categoryName = product.categoryName;
+      if (categoryId == null || categoryName == null) {
+        continue;
+      }
+      if (seen.add(categoryId)) {
+        categories.add(Category(id: categoryId, name: categoryName));
+      }
+    }
 
-  Future<OrderLocal?> getOrderById(String id);
+    categories.sort((left, right) => left.name.compareTo(right.name));
+    return categories;
+  }
 
-  Future<void> upsertOrder(
-    OrderLocal order, {
-    Iterable<OrderItemLocal> items = const [],
-    Iterable<PaymentLocal> payments = const [],
-  });
+  Future<bool> hasCachedProducts() async {
+    final isar = await open();
+    return (await isar.productLocals.where().count()) > 0;
+  }
 
-  Future<void> upsertOrderItems(Iterable<OrderItemLocal> items);
+  Future<void> saveOrderSnapshot(Order order) async {
+    final isar = await open();
+    final orderLocal = OrderLocal.fromDomain(order);
+    final itemLocals = order.items
+        .map((item) => OrderItemLocal.fromDomain(order.id, item))
+        .toList();
+    final paymentLocals = order.payments
+        .map((payment) => PaymentLocal.fromDomain(order.id, payment))
+        .toList();
 
-  Future<List<OrderItemLocal>> getOrderItemsByOrderId(String orderId);
-
-  Future<void> deleteOrderItem(String id);
-
-  Future<void> upsertPayments(Iterable<PaymentLocal> payments);
-
-  Future<List<PaymentLocal>> getPaymentsByOrderId(String orderId);
-
-  Future<void> deletePayment(String id);
-
-  Future<void> deleteOrder(String id);
-
-  Stream<List<SyncQueueLocal>> watchSyncQueue({LocalSyncStatus? status});
-
-  Future<List<SyncQueueLocal>> getSyncQueue({LocalSyncStatus? status});
-
-  Future<void> enqueueSync(SyncQueueLocal entry);
-
-  Future<void> markSyncInProgress(String id);
-
-  Future<void> markSyncComplete(String id);
-
-  Future<void> markSyncFailed(
-    String id, {
-    String? errorMessage,
-    DateTime? nextAttemptAt,
-  });
-
-  Future<void> clearAll();
+    await isar.writeTxn(() async {
+      await isar.orderLocals.put(orderLocal);
+      await isar.orderItemLocals.filter().orderIdEqualTo(order.id).deleteAll();
+      await isar.paymentLocals.filter().orderIdEqualTo(order.id).deleteAll();
+      if (itemLocals.isNotEmpty) {
+        await isar.orderItemLocals.putAll(itemLocals);
+      }
+      if (paymentLocals.isNotEmpty) {
+        await isar.paymentLocals.putAll(paymentLocals);
+      }
+    });
+  }
 }

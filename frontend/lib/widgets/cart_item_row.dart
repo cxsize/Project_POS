@@ -63,8 +63,9 @@ class CartItemRow extends StatelessWidget {
               child: Text(
                 '\u0E3F${item.subtotal.toStringAsFixed(2)}',
                 textAlign: TextAlign.right,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],

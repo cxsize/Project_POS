@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_theme.dart';
-import 'screens/login_screen.dart';
+import 'screens/app_bootstrap_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: PosApp()));
@@ -16,7 +16,7 @@ class PosApp extends StatelessWidget {
       title: 'POS System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: const LoginScreen(),
+      home: const AppBootstrapScreen(),
     );
   }
 }

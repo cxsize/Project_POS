@@ -1,10 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 
-// ignore: depend_on_referenced_packages
-import 'package:path/path.dart' as path;
-// ignore: depend_on_referenced_packages
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth_session.dart';
 
@@ -14,60 +10,43 @@ abstract class AuthSessionStore {
   Future<void> clear();
 }
 
-class FileAuthSessionStore implements AuthSessionStore {
-  static const _directoryName = 'session';
-  static const _fileName = 'auth_session.json';
+class SecureAuthSessionStore implements AuthSessionStore {
+  static const _tokenKey = 'pos.auth.token';
+  static const _userKey = 'pos.auth.user';
 
-  final Future<Directory> Function() _directoryProvider;
+  final FlutterSecureStorage _storage;
 
-  FileAuthSessionStore({Future<Directory> Function()? directoryProvider})
-    : _directoryProvider = directoryProvider ?? getApplicationSupportDirectory;
-
-  Future<File> _sessionFile() async {
-    final directory = await _directoryProvider();
-    final sessionDirectory = Directory(
-      path.join(directory.path, _directoryName),
-    );
-    if (!await sessionDirectory.exists()) {
-      await sessionDirectory.create(recursive: true);
-    }
-    return File(path.join(sessionDirectory.path, _fileName));
-  }
+  SecureAuthSessionStore({FlutterSecureStorage? storage})
+    : _storage = storage ?? const FlutterSecureStorage();
 
   @override
   Future<AuthSession?> read() async {
-    final file = await _sessionFile();
-    if (!await file.exists()) {
+    final token = await _storage.read(key: _tokenKey);
+    final userJson = await _storage.read(key: _userKey);
+    if (token == null || userJson == null) {
       return null;
     }
 
-    try {
-      final content = await file.readAsString();
-      if (content.trim().isEmpty) {
-        return null;
-      }
-      final decoded = jsonDecode(content);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
-      }
-      return AuthSession.fromJson(decoded);
-    } on FormatException {
-      await clear();
+    final decodedUser = jsonDecode(userJson);
+    if (decodedUser is! Map<String, dynamic>) {
       return null;
     }
+
+    return AuthSession.fromJson({'token': token, 'user': decodedUser});
   }
 
   @override
   Future<void> write(AuthSession session) async {
-    final file = await _sessionFile();
-    await file.writeAsString(jsonEncode(session.toJson()));
+    await _storage.write(key: _tokenKey, value: session.token);
+    await _storage.write(
+      key: _userKey,
+      value: jsonEncode(session.toJson()['user']),
+    );
   }
 
   @override
   Future<void> clear() async {
-    final file = await _sessionFile();
-    if (await file.exists()) {
-      await file.delete();
-    }
+    await _storage.delete(key: _tokenKey);
+    await _storage.delete(key: _userKey);
   }
 }

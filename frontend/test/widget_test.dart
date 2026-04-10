@@ -2,10 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:pos_frontend/main.dart';
+import 'package:pos_frontend/providers/app_bootstrap_provider.dart';
 
 void main() {
   testWidgets('renders the login screen', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: PosApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appBootstrapProvider.overrideWith((ref) async {})],
+        child: const PosApp(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('POS Login'), findsOneWidget);

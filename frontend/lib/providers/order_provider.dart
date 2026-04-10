@@ -27,7 +27,9 @@ class OrderNotifier extends StateNotifier<OrderState> {
     state = const OrderState(isLoading: true);
     try {
       final auth = ref.read(authProvider);
-      final order = await ref.read(orderServiceProvider).createOrder(
+      final order = await ref
+          .read(orderServiceProvider)
+          .createOrder(
             branchId: auth.user!.branchId ?? auth.user!.id,
             staffId: auth.user!.id,
             items: items,
@@ -45,7 +47,9 @@ class OrderNotifier extends StateNotifier<OrderState> {
   }) async {
     state = OrderState(currentOrder: state.currentOrder, isLoading: true);
     try {
-      final result = await ref.read(orderServiceProvider).addPayment(
+      final result = await ref
+          .read(orderServiceProvider)
+          .addPayment(
             orderId: state.currentOrder!.id,
             method: method,
             amountReceived: amount,
@@ -53,10 +57,7 @@ class OrderNotifier extends StateNotifier<OrderState> {
           );
       state = OrderState(currentOrder: result.order, change: result.change);
     } catch (e) {
-      state = OrderState(
-        currentOrder: state.currentOrder,
-        error: e.toString(),
-      );
+      state = OrderState(currentOrder: state.currentOrder, error: e.toString());
     }
   }
 

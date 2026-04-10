@@ -40,13 +40,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Enter a valid amount'),
-            backgroundColor: Colors.red),
+          content: Text('Enter a valid amount'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    await ref.read(orderProvider.notifier).submitPayment(
+    await ref
+        .read(orderProvider.notifier)
+        .submitPayment(
           _method,
           amount,
           refNo: _refNoController.text.isNotEmpty
@@ -131,8 +134,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 net: order.netAmount,
               ),
               const SizedBox(height: 24),
-              Text('Payment Method',
-                  style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Payment Method',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 12),
               PaymentMethodSelector(
                 selected: _method,
@@ -145,8 +150,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   labelText: 'Amount Received',
                   prefixText: '\u0E3F ',
                 ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
               ),
               if (_method != 'cash') ...[
                 const SizedBox(height: 12),
@@ -170,10 +176,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         width: 24,
                         height: 24,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
-                    : const Text('Confirm Payment',
-                        style: TextStyle(fontSize: 18)),
+                    : const Text(
+                        'Confirm Payment',
+                        style: TextStyle(fontSize: 18),
+                      ),
               ),
             ],
           ),

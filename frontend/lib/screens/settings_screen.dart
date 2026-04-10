@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
 
@@ -29,10 +30,12 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
-            title:
-                const Text('Logout', style: TextStyle(color: Colors.red)),
-            onTap: () {
-              ref.read(authProvider.notifier).logout();
+            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              await ref.read(authProvider.notifier).logout();
+              if (!context.mounted) {
+                return;
+              }
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
                 (_) => false,

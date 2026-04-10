@@ -7,7 +7,7 @@ class AuthService {
   final AuthSessionStore _sessionStore;
 
   AuthService(this._client, {AuthSessionStore? sessionStore})
-    : _sessionStore = sessionStore ?? FileAuthSessionStore();
+    : _sessionStore = sessionStore ?? SecureAuthSessionStore();
 
   Future<AuthSession> login(String username, String password) async {
     final data =

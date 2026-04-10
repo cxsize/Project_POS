@@ -26,17 +26,26 @@ class OrderSummaryCard extends StatelessWidget {
             if (discount > 0) _row(context, 'Discount', -discount),
             _row(context, 'VAT (7%)', vat),
             const Divider(),
-            _row(context, 'Total', net,
-                style: theme.textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.bold)),
+            _row(
+              context,
+              'Total',
+              net,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _row(BuildContext context, String label, double amount,
-      {TextStyle? style}) {
+  Widget _row(
+    BuildContext context,
+    String label,
+    double amount, {
+    TextStyle? style,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
