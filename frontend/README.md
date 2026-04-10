@@ -1,4 +1,4 @@
-# pos_frontend
+# project_pos_frontend
 
 A new Flutter project.
 
