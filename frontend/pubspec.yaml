@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_dotenv: ^5.2.1
   flutter_riverpod: ^2.6.1
   flutter_secure_storage: ^9.2.4
   google_fonts: ^6.2.1
@@ -52,3 +53,5 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   uses-material-design: true
+  assets:
+    - .env

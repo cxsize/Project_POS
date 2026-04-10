@@ -1,12 +1,15 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
+import '../config/app_config.dart';
 
 class ApiClient {
   final String baseUrl;
   String? _token;
   final http.Client _client = http.Client();
 
-  ApiClient({this.baseUrl = 'http://localhost:3000/api/v1'});
+  ApiClient({String? baseUrl}) : baseUrl = baseUrl ?? AppConfig.apiBaseUrl;
 
   void setToken(String token) => _token = token;
   void clearToken() => _token = null;
