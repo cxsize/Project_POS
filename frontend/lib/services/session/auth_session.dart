@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../models/user.dart';
 
 const _sessionVersion = 1;
+const _jwtExpiryLeeway = Duration(seconds: 30);
 
 class AuthSession {
   final String token;
@@ -42,6 +43,34 @@ Map<String, dynamic> decodeJwtPayload(String token) {
   final normalized = base64Url.normalize(parts[1]);
   return jsonDecode(utf8.decode(base64Url.decode(normalized)))
       as Map<String, dynamic>;
+}
+
+DateTime? jwtExpiryFromPayload(Map<String, dynamic> payload) {
+  final exp = payload['exp'];
+  if (exp is int) {
+    return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
+  }
+  if (exp is String) {
+    final parsed = int.tryParse(exp);
+    if (parsed != null) {
+      return DateTime.fromMillisecondsSinceEpoch(parsed * 1000, isUtc: true);
+    }
+  }
+  return null;
+}
+
+bool isJwtExpired(
+  String token, {
+  DateTime? now,
+  Duration leeway = _jwtExpiryLeeway,
+}) {
+  final expiry = jwtExpiryFromPayload(decodeJwtPayload(token));
+  if (expiry == null) {
+    return false;
+  }
+
+  final referenceTime = now?.toUtc() ?? DateTime.now().toUtc();
+  return referenceTime.isAfter(expiry.subtract(leeway));
 }
 
 User userFromJwtPayload(Map<String, dynamic> payload) {

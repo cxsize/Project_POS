@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/cart_item.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/order_provider.dart';
@@ -61,6 +62,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       ref.read(cartProvider.notifier).addItem(product);
       _searchController.clear();
       ref.read(productSearchQueryProvider.notifier).state = '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added ${product.name} to cart'),
+          duration: const Duration(milliseconds: 900),
+        ),
+      );
       return;
     }
 
@@ -94,6 +101,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final cartTotal = ref.watch(cartTotalProvider);
     final cartVat = ref.watch(cartVatProvider);
     final cartNet = ref.watch(cartNetProvider);
+    final orderState = ref.watch(orderProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -118,144 +126,186 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ],
       ),
-      body: Row(
-        children: [
-          Expanded(
-            flex: 65,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 960;
+
+          if (isCompact) {
+            return Column(
+              children: [
+                Expanded(child: _buildCatalogPanel(context)),
+                Container(height: 1, color: Theme.of(context).dividerColor),
+                SizedBox(
+                  height: 360,
+                  child: _CartPanel(
+                    cart: cart,
+                    cartTotal: cartTotal,
+                    cartVat: cartVat,
+                    cartNet: cartNet,
+                    isSubmitting: orderState.isLoading,
+                    onClear: () => ref.read(cartProvider.notifier).clear(),
+                    onCheckout: () => _checkout(cart),
+                    onIncrement: (item) => ref
+                        .read(cartProvider.notifier)
+                        .incrementQty(item.product.id),
+                    onDecrement: (item) => ref
+                        .read(cartProvider.notifier)
+                        .decrementQty(item.product.id),
+                    onRemove: (item) => ref
+                        .read(cartProvider.notifier)
+                        .removeItem(item.product.id),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(flex: 65, child: _buildCatalogPanel(context)),
+              Container(width: 1, color: Theme.of(context).dividerColor),
+              Expanded(
+                flex: 35,
+                child: _CartPanel(
+                  cart: cart,
+                  cartTotal: cartTotal,
+                  cartVat: cartVat,
+                  cartNet: cartNet,
+                  isSubmitting: orderState.isLoading,
+                  onClear: () => ref.read(cartProvider.notifier).clear(),
+                  onCheckout: () => _checkout(cart),
+                  onIncrement: (item) => ref
+                      .read(cartProvider.notifier)
+                      .incrementQty(item.product.id),
+                  onDecrement: (item) => ref
+                      .read(cartProvider.notifier)
+                      .decrementQty(item.product.id),
+                  onRemove: (item) => ref
+                      .read(cartProvider.notifier)
+                      .removeItem(item.product.id),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCatalogPanel(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Stack(
+      children: [
+        Column(
+          children: [
+            const SizedBox(height: 144),
+            Expanded(child: _ProductGrid(onRefresh: _refreshCatalog)),
+          ],
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.shadow.withAlpha(16),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
             child: Column(
               children: [
                 const CategoryFilterBar(),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      labelText: 'Search products or scan barcode',
-                      hintText: 'Type product name or SKU',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: IconButton(
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          _searchController.clear();
-                          ref.read(productSearchQueryProvider.notifier).state =
-                              '';
-                        },
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                    onChanged: (value) {
-                      ref.read(productSearchQueryProvider.notifier).state =
-                          value;
-                    },
-                    onSubmitted: _handleBarcodeSubmit,
-                  ),
-                ),
-                Expanded(child: _ProductGrid(onRefresh: _refreshCatalog)),
-              ],
-            ),
-          ),
-          Container(width: 1, color: Theme.of(context).dividerColor),
-          Expanded(
-            flex: 35,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Cart',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${cart.length} items',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: cart.isEmpty
-                      ? const Center(child: Text('Tap products to add'))
-                      : ListView.builder(
-                          itemCount: cart.length,
-                          itemBuilder: (_, i) {
-                            final item = cart[i];
-                            return CartItemRow(
-                              item: item,
-                              onIncrement: () => ref
-                                  .read(cartProvider.notifier)
-                                  .incrementQty(item.product.id),
-                              onDecrement: () => ref
-                                  .read(cartProvider.notifier)
-                                  .decrementQty(item.product.id),
-                              onRemove: () => ref
-                                  .read(cartProvider.notifier)
-                                  .removeItem(item.product.id),
-                            );
-                          },
-                        ),
-                ),
-                if (cart.isNotEmpty) ...[
-                  OrderSummaryCard(
-                    subtotal: cartTotal,
-                    vat: cartVat,
-                    net: cartNet,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () =>
-                                ref.read(cartProvider.notifier).clear(),
-                            child: const Text('Clear'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              await ref
-                                  .read(orderProvider.notifier)
-                                  .submitOrder(cart);
-                              if (!context.mounted) {
-                                return;
-                              }
-
-                              final orderState = ref.read(orderProvider);
-                              if (orderState.currentOrder != null) {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const PaymentScreen(),
-                                  ),
-                                );
-                              } else if (orderState.error != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(orderState.error!),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  child: Material(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(18),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              labelText: 'Barcode / Product Search',
+                              hintText:
+                                  'Type product name, SKU, or scan barcode',
+                              prefixIcon: const Icon(Icons.qr_code_scanner),
+                              suffixIcon: IconButton(
+                                tooltip: 'Clear search',
+                                onPressed: () {
+                                  _searchController.clear();
+                                  ref
+                                          .read(
+                                            productSearchQueryProvider.notifier,
+                                          )
+                                          .state =
+                                      '';
+                                },
+                                icon: const Icon(Icons.close),
+                              ),
+                            ),
+                            textInputAction: TextInputAction.search,
+                            onChanged: (value) {
+                              ref
+                                      .read(productSearchQueryProvider.notifier)
+                                      .state =
+                                  value;
                             },
-                            child: const Text('Checkout'),
+                            onSubmitted: _handleBarcodeSubmit,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.touch_app,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Tap a tile to add instantly. Press enter after scanning to match a SKU.',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  Future<void> _checkout(List<CartItem> cart) async {
+    await ref.read(orderProvider.notifier).submitOrder(cart);
+    if (!mounted) {
+      return;
+    }
+
+    final orderState = ref.read(orderProvider);
+    if (orderState.currentOrder != null) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const PaymentScreen()));
+    } else if (orderState.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(orderState.error!), backgroundColor: Colors.red),
+      );
+    }
   }
 }
 
@@ -310,6 +360,117 @@ class _ProductGrid extends ConsumerWidget {
       ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error loading products: $e')),
+    );
+  }
+}
+
+class _CartPanel extends StatelessWidget {
+  const _CartPanel({
+    required this.cart,
+    required this.cartTotal,
+    required this.cartVat,
+    required this.cartNet,
+    required this.isSubmitting,
+    required this.onClear,
+    required this.onCheckout,
+    required this.onIncrement,
+    required this.onDecrement,
+    required this.onRemove,
+  });
+
+  final List<CartItem> cart;
+  final double cartTotal;
+  final double cartVat;
+  final double cartNet;
+  final bool isSubmitting;
+  final VoidCallback onClear;
+  final Future<void> Function() onCheckout;
+  final void Function(CartItem item) onIncrement;
+  final void Function(CartItem item) onDecrement;
+  final void Function(CartItem item) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: theme.colorScheme.surfaceContainerLow,
+          child: Row(
+            children: [
+              Text('Cart', style: theme.textTheme.titleLarge),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${cart.length} items',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: cart.isEmpty
+              ? const Center(child: Text('Tap products to add'))
+              : ListView.builder(
+                  itemCount: cart.length,
+                  itemBuilder: (_, i) {
+                    final item = cart[i];
+                    return CartItemRow(
+                      item: item,
+                      onIncrement: () => onIncrement(item),
+                      onDecrement: () => onDecrement(item),
+                      onRemove: () => onRemove(item),
+                    );
+                  },
+                ),
+        ),
+        if (cart.isNotEmpty) ...[
+          OrderSummaryCard(subtotal: cartTotal, vat: cartVat, net: cartNet),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: isSubmitting ? null : onClear,
+                    child: const Text('Clear'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: isSubmitting ? null : onCheckout,
+                    child: isSubmitting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Checkout'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

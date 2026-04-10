@@ -36,6 +36,16 @@ class AuthService {
       return null;
     }
 
+    try {
+      if (isJwtExpired(session.token)) {
+        await logout();
+        return null;
+      }
+    } on FormatException {
+      await logout();
+      return null;
+    }
+
     _client.setToken(session.token);
     return session;
   }
