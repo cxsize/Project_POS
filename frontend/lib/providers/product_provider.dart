@@ -5,7 +5,7 @@ import '../models/product.dart';
 import 'service_providers.dart';
 
 final categoriesProvider = FutureProvider<List<Category>>((ref) {
-  return ref.read(productServiceProvider).getCategories();
+  return ref.read(productServiceProvider).getCachedCategories();
 });
 
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
@@ -17,7 +17,7 @@ final filteredProductsProvider = FutureProvider<List<Product>>((ref) {
 
   return ref
       .read(productServiceProvider)
-      .getProducts(search: searchQuery, categoryId: selectedCategory);
+      .searchCachedProducts(search: searchQuery, categoryId: selectedCategory);
 });
 
 final hasActiveProductFiltersProvider = Provider<bool>((ref) {

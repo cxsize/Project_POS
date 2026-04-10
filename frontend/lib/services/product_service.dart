@@ -46,13 +46,17 @@ class ProductService {
     await _localDatabase.cacheProducts(products);
   }
 
-  Future<List<Product>> getProducts({
-    String search = '',
-    String? categoryId,
-  }) async {
+  Future<void> ensureCatalogReady() async {
     if (!await _localDatabase.hasCachedProducts()) {
       await warmupCatalog();
     }
+  }
+
+  Future<List<Product>> searchCachedProducts({
+    String search = '',
+    String? categoryId,
+  }) async {
+    await ensureCatalogReady();
 
     return _localDatabase.searchProducts(
       search: search,
@@ -60,11 +64,8 @@ class ProductService {
     );
   }
 
-  Future<List<Category>> getCategories() async {
-    if (!await _localDatabase.hasCachedProducts()) {
-      await warmupCatalog();
-    }
-
+  Future<List<Category>> getCachedCategories() async {
+    await ensureCatalogReady();
     return _localDatabase.getCategories();
   }
 
