@@ -14,23 +14,18 @@ class AuthService {
         await _client.post(
               '/auth/login',
               body: {'username': username, 'password': password},
+              retryOnUnauthorized: false,
             )
             as Map<String, dynamic>;
-
-    final token = data['access_token'] as String;
-    final payload = decodeJwtPayload(token);
-    final session = AuthSession(
-      token: token,
-      user: userFromJwtPayload(payload),
-    );
+    final session = authSessionFromResponse(data);
 
     await _sessionStore.write(session);
-    _client.setToken(token);
+    _client.setToken(session.token);
     return session;
   }
 
   Future<AuthSession?> restoreSession() async {
-    final session = await _sessionStore.read();
+    var session = await _sessionStore.read();
     if (session == null) {
       _client.clearToken();
       return null;
@@ -38,8 +33,13 @@ class AuthService {
 
     try {
       if (isJwtExpired(session.token)) {
-        await logout();
-        return null;
+        final refreshedSession = await refreshSession(
+          refreshToken: session.refreshToken,
+        );
+        if (refreshedSession == null) {
+          return null;
+        }
+        session = refreshedSession;
       }
     } on FormatException {
       await logout();
@@ -47,12 +47,55 @@ class AuthService {
     }
 
     _client.setToken(session.token);
-    return session;
+    return refreshCurrentUser(session);
   }
 
   Future<void> saveSession(AuthSession session) async {
     await _sessionStore.write(session);
     _client.setToken(session.token);
+  }
+
+  Future<AuthSession?> refreshSession({String? refreshToken}) async {
+    final activeRefreshToken = refreshToken?.trim();
+    if (activeRefreshToken == null || activeRefreshToken.isEmpty) {
+      await logout();
+      return null;
+    }
+
+    try {
+      final data =
+          await _client.post(
+                '/auth/refresh',
+                body: {'refresh_token': activeRefreshToken},
+                retryOnUnauthorized: false,
+              )
+              as Map<String, dynamic>;
+      final session = authSessionFromResponse(data);
+      await saveSession(session);
+      return session;
+    } catch (_) {
+      await logout();
+      return null;
+    }
+  }
+
+  Future<String?> refreshAccessToken() async {
+    final session = await _sessionStore.read();
+    final refreshed = await refreshSession(refreshToken: session?.refreshToken);
+    return refreshed?.token;
+  }
+
+  Future<AuthSession> refreshCurrentUser(AuthSession session) async {
+    final user =
+        await _client.get('/auth/me', retryOnUnauthorized: true)
+            as Map<String, dynamic>;
+    final updatedSession = AuthSession(
+      token: session.token,
+      refreshToken: session.refreshToken,
+      user: userFromJson(user),
+    );
+    await saveSession(updatedSession);
+    return updatedSession;
   }
 
   Future<void> logout() async {

@@ -11,9 +11,12 @@ final localDatabaseServiceProvider = Provider<LocalDatabaseService>(
   (ref) => LocalDatabaseService(),
 );
 
-final authServiceProvider = Provider<AuthService>(
-  (ref) => AuthService(ref.read(apiClientProvider)),
-);
+final authServiceProvider = Provider<AuthService>((ref) {
+  final apiClient = ref.read(apiClientProvider);
+  final authService = AuthService(apiClient);
+  apiClient.setUnauthorizedRecovery(authService.refreshAccessToken);
+  return authService;
+});
 
 final productServiceProvider = Provider<ProductService>(
   (ref) => ProductService(

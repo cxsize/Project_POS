@@ -7,20 +7,27 @@ const _jwtExpiryLeeway = Duration(seconds: 30);
 
 class AuthSession {
   final String token;
+  final String? refreshToken;
   final User user;
 
-  const AuthSession({required this.token, required this.user});
+  const AuthSession({
+    required this.token,
+    this.refreshToken,
+    required this.user,
+  });
 
   Map<String, dynamic> toJson() {
     return {
       'version': _sessionVersion,
       'token': token,
+      if (refreshToken != null) 'refreshToken': refreshToken,
       'user': userToJson(user),
     };
   }
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
     final token = json['token'];
+    final refreshToken = json['refreshToken'] ?? json['refresh_token'];
     final userJson = json['user'];
 
     if (token is! String || token.isEmpty) {
@@ -30,8 +37,30 @@ class AuthSession {
       throw const FormatException('Missing user');
     }
 
-    return AuthSession(token: token, user: userFromJson(userJson));
+    return AuthSession(
+      token: token,
+      refreshToken: refreshToken?.toString(),
+      user: userFromJson(userJson),
+    );
   }
+}
+
+AuthSession authSessionFromResponse(Map<String, dynamic> json) {
+  final token = json['access_token']?.toString();
+  if (token == null || token.isEmpty) {
+    throw const FormatException('Missing access token');
+  }
+
+  final userJson = json['user'];
+  final payload = decodeJwtPayload(token);
+
+  return AuthSession(
+    token: token,
+    refreshToken: json['refresh_token']?.toString(),
+    user: userJson is Map<String, dynamic>
+        ? userFromJson(userJson)
+        : userFromJwtPayload(payload),
+  );
 }
 
 Map<String, dynamic> decodeJwtPayload(String token) {
@@ -119,6 +148,7 @@ User userFromJson(Map<String, dynamic> json) {
   final id = json['id']?.toString();
   final username = json['username']?.toString();
   final fullName = json['fullName']?.toString();
+  final altFullName = json['full_name']?.toString();
   final role = json['role']?.toString();
 
   if (id == null || id.isEmpty) {
@@ -127,7 +157,8 @@ User userFromJson(Map<String, dynamic> json) {
   if (username == null || username.isEmpty) {
     throw const FormatException('Stored user missing username');
   }
-  if (fullName == null || fullName.isEmpty) {
+  final resolvedFullName = fullName ?? altFullName;
+  if (resolvedFullName == null || resolvedFullName.isEmpty) {
     throw const FormatException('Stored user missing fullName');
   }
   if (role == null || role.isEmpty) {
@@ -137,8 +168,8 @@ User userFromJson(Map<String, dynamic> json) {
   return User(
     id: id,
     username: username,
-    fullName: fullName,
+    fullName: resolvedFullName,
     role: role,
-    branchId: json['branchId']?.toString(),
+    branchId: json['branchId']?.toString() ?? json['branch_id']?.toString(),
   );
 }

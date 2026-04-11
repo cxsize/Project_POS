@@ -32,9 +32,65 @@ describe('App (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({ username: 'admin', password: 'admin' })
       .expect(201)
-      .expect((res: { body: { access_token: string } }) => {
-        expect(res.body.access_token).toBeDefined();
-      });
+      .expect(
+        (res: {
+          body: {
+            access_token: string;
+            refresh_token: string;
+            user: { username: string };
+          };
+        }) => {
+          expect(res.body.access_token).toBeDefined();
+          expect(res.body.refresh_token).toBeDefined();
+          expect(res.body.user.username).toBe('admin');
+        },
+      );
+  });
+
+  it('/api/v1/auth/refresh (POST) - should issue a new auth payload', async () => {
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ username: 'admin', password: 'admin' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refresh_token: loginResponse.body.refresh_token })
+      .expect(201)
+      .expect(
+        (res: {
+          body: {
+            access_token: string;
+            refresh_token: string;
+            user: { username: string };
+          };
+        }) => {
+          expect(res.body.access_token).toBeDefined();
+          expect(res.body.refresh_token).toBeDefined();
+          expect(res.body.user.username).toBe('admin');
+        },
+      );
+  });
+
+  it('/api/v1/auth/me (GET) - should return current user profile', async () => {
+    const loginResponse = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ username: 'admin', password: 'admin' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${loginResponse.body.access_token}`)
+      .expect(200)
+      .expect(
+        (res: {
+          body: { username: string; role: string; full_name: string };
+        }) => {
+          expect(res.body.username).toBe('admin');
+          expect(res.body.role).toBeDefined();
+          expect(res.body.full_name).toBeDefined();
+        },
+      );
   });
 
   afterEach(async () => {

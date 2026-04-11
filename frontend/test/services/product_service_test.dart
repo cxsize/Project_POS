@@ -91,7 +91,7 @@ class FakeApiClient extends ApiClient {
   final List<String> requestedPaths = [];
 
   @override
-  Future<dynamic> get(String path) async {
+  Future<dynamic> get(String path, {bool retryOnUnauthorized = true}) async {
     requestedPaths.add(path);
     if (!_responseByPath.containsKey(path)) {
       throw StateError('Unexpected GET request: $path');
