@@ -42,11 +42,13 @@ class Order {
       netAmount: double.parse(json['net_amount'].toString()),
       paymentStatus: json['payment_status'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
-      items: (json['items'] as List<dynamic>?)
+      items:
+          (json['items'] as List<dynamic>?)
               ?.map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      payments: (json['payments'] as List<dynamic>?)
+      payments:
+          (json['payments'] as List<dynamic>?)
               ?.map((e) => Payment.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],

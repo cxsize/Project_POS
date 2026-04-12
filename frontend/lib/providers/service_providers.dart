@@ -1,19 +1,33 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../local/local_database_service.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/order_service.dart';
 import '../services/product_service.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
-
-final authServiceProvider = Provider<AuthService>(
-  (ref) => AuthService(ref.read(apiClientProvider)),
+final localDatabaseServiceProvider = Provider<LocalDatabaseService>(
+  (ref) => LocalDatabaseService(),
 );
 
+final authServiceProvider = Provider<AuthService>((ref) {
+  final apiClient = ref.read(apiClientProvider);
+  final authService = AuthService(apiClient);
+  apiClient.setUnauthorizedRecovery(authService.refreshAccessToken);
+  return authService;
+});
+
 final productServiceProvider = Provider<ProductService>(
-  (ref) => ProductService(ref.read(apiClientProvider)),
+  (ref) => ProductService(
+    ref.read(apiClientProvider),
+    ref.read(localDatabaseServiceProvider),
+  ),
 );
 
 final orderServiceProvider = Provider<OrderService>(
-  (ref) => OrderService(ref.read(apiClientProvider)),
+  (ref) => OrderService(
+    ref.read(apiClientProvider),
+    ref.read(localDatabaseServiceProvider),
+  ),
 );

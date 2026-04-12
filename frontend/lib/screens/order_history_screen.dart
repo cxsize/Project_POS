@@ -64,33 +64,44 @@ class _OrderCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(order.orderNo,
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold)),
+                    Text(
+                      order.orderNo,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(dateFormat.format(order.createdAt.toLocal()),
-                        style: theme.textTheme.bodySmall),
+                    Text(
+                      dateFormat.format(order.createdAt.toLocal()),
+                      style: theme.textTheme.bodySmall,
+                    ),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('\u0E3F${order.netAmount.toStringAsFixed(2)}',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    '\u0E3F${order.netAmount.toStringAsFixed(2)}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: statusColor.withAlpha(30),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       order.paymentStatus.toUpperCase(),
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: statusColor),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: statusColor,
+                      ),
                     ),
                   ),
                 ],
@@ -123,36 +134,46 @@ class _OrderCard extends StatelessWidget {
               const SizedBox(height: 16),
               Text('Items', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
-              ...order.items.map((item) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text('${item.qty}x')),
-                        Expanded(
-                            flex: 3, child: Text(item.productId)),
-                        Text('\u0E3F${item.subtotal.toStringAsFixed(2)}'),
-                      ],
-                    ),
-                  )),
+              ...order.items.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('${item.qty}x')),
+                      Expanded(flex: 3, child: Text(item.productId)),
+                      Text('\u0E3F${item.subtotal.toStringAsFixed(2)}'),
+                    ],
+                  ),
+                ),
+              ),
               const Divider(height: 24),
-              _detailRow('Subtotal',
-                  '\u0E3F${order.totalAmount.toStringAsFixed(2)}'),
               _detailRow(
-                  'Discount',
-                  '\u0E3F${order.discountAmount.toStringAsFixed(2)}'),
+                'Subtotal',
+                '\u0E3F${order.totalAmount.toStringAsFixed(2)}',
+              ),
               _detailRow(
-                  'VAT (7%)', '\u0E3F${order.vatAmount.toStringAsFixed(2)}'),
+                'Discount',
+                '\u0E3F${order.discountAmount.toStringAsFixed(2)}',
+              ),
               _detailRow(
-                  'Net', '\u0E3F${order.netAmount.toStringAsFixed(2)}',
-                  bold: true),
+                'VAT (7%)',
+                '\u0E3F${order.vatAmount.toStringAsFixed(2)}',
+              ),
+              _detailRow(
+                'Net',
+                '\u0E3F${order.netAmount.toStringAsFixed(2)}',
+                bold: true,
+              ),
               if (order.payments.isNotEmpty) ...[
                 const Divider(height: 24),
                 Text('Payments', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                ...order.payments.map((p) => _detailRow(
-                      p.method.toUpperCase(),
-                      '\u0E3F${p.amountReceived.toStringAsFixed(2)}',
-                    )),
+                ...order.payments.map(
+                  (p) => _detailRow(
+                    p.method.toUpperCase(),
+                    '\u0E3F${p.amountReceived.toStringAsFixed(2)}',
+                  ),
+                ),
               ],
             ],
           );
@@ -167,14 +188,18 @@ class _OrderCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: bold
-                  ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-                  : null),
-          Text(value,
-              style: bold
-                  ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-                  : null),
+          Text(
+            label,
+            style: bold
+                ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                : null,
+          ),
+          Text(
+            value,
+            style: bold
+                ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                : null,
+          ),
         ],
       ),
     );

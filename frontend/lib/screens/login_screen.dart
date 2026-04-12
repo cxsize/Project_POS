@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/user.dart';
 import '../providers/auth_provider.dart';
+import '../providers/product_provider.dart';
+import '../providers/service_providers.dart';
 import 'checkout_screen.dart';
+import 'order_history_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -22,21 +27,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _login() async {
-    await ref.read(authProvider.notifier).login(
-          _usernameController.text.trim(),
-          _passwordController.text,
-        );
-    if (!mounted) return;
+    await ref
+        .read(authProvider.notifier)
+        .login(_usernameController.text.trim(), _passwordController.text);
+    if (!mounted) {
+      return;
+    }
+
     final auth = ref.read(authProvider);
     if (auth.isAuthenticated) {
+      await ref.read(productServiceProvider).warmupCatalog();
+      if (!mounted) {
+        return;
+      }
+      ref.invalidate(categoriesProvider);
+      ref.invalidate(filteredProductsProvider);
+
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const CheckoutScreen()),
+        MaterialPageRoute(builder: (_) => _buildHomeForRole(auth.user!)),
       );
     } else if (auth.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(auth.error!), backgroundColor: Colors.red),
       );
     }
+  }
+
+  Widget _buildHomeForRole(User user) {
+    if (user.role == 'cashier') {
+      return const CheckoutScreen();
+    }
+
+    return const OrderHistoryScreen();
   }
 
   @override
@@ -54,8 +76,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.point_of_sale,
-                    size: 64, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.point_of_sale,
+                  size: 64,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(height: 16),
                 Text('POS Login', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 32),

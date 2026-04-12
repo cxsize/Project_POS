@@ -29,42 +29,53 @@ class CartItemRow extends StatelessWidget {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
             Expanded(
               child: Text(
                 item.product.name,
-                style: theme.textTheme.bodyMedium,
-                maxLines: 1,
+                style: theme.textTheme.titleSmall,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
               onPressed: onDecrement,
-              iconSize: 28,
-            ),
-            SizedBox(
-              width: 32,
-              child: Text(
-                '${item.qty}',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(44, 44),
+                padding: EdgeInsets.zero,
               ),
+              child: const Icon(Icons.remove),
             ),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
+            Container(
+              width: 48,
+              alignment: Alignment.center,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('${item.qty}', style: theme.textTheme.titleMedium),
+            ),
+            FilledButton(
               onPressed: onIncrement,
-              iconSize: 28,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(44, 44),
+                padding: EdgeInsets.zero,
+              ),
+              child: const Icon(Icons.add),
             ),
             SizedBox(
-              width: 80,
+              width: 88,
               child: Text(
                 '\u0E3F${item.subtotal.toStringAsFixed(2)}',
                 textAlign: TextAlign.right,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
