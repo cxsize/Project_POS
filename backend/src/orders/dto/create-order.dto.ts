@@ -2,9 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsIn,
   IsNumber,
   IsOptional,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -45,10 +47,57 @@ export class CreateOrderDto {
   @IsUUID()
   staff_id: string;
 
+  @ApiPropertyOptional({
+    enum: ['flat', 'percent'],
+    description: 'Discount calculation mode. Defaults to flat.',
+  })
+  @IsOptional()
+  @IsIn(['flat', 'percent'])
+  discount_type?: 'flat' | 'percent';
+
   @ApiPropertyOptional({ example: 0 })
   @IsNumber()
+  @Min(0)
   @IsOptional()
   discount_amount?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
+    description:
+      'Percentage discount from 0-100. Used when discount_type=percent.',
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  discount_percent?: number;
+
+  @ApiPropertyOptional({
+    example: 320,
+    description: 'Client-computed subtotal before discount/VAT.',
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  total_amount?: number;
+
+  @ApiPropertyOptional({
+    example: 20.16,
+    description: 'Client-computed VAT amount used for validation.',
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  vat_amount?: number;
+
+  @ApiPropertyOptional({
+    example: 308.16,
+    description: 'Client-computed net amount used for validation.',
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  net_amount?: number;
 
   @ApiProperty({ type: [CreateOrderItemDto] })
   @IsArray()

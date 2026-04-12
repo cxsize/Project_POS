@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
@@ -15,6 +16,10 @@ import { Payment } from './entities/payment.entity';
 
 @Injectable()
 export class OrdersService {
+  private static readonly DEFAULT_VAT_RATE = 0.07;
+  private static readonly CURRENCY_PRECISION = 100;
+  private static readonly AMOUNT_TOLERANCE = 0.01;
+
   constructor(
     @InjectRepository(Order)
     private ordersRepository: Repository<Order>,
@@ -25,6 +30,7 @@ export class OrdersService {
     private dataSource: DataSource,
     private productsService: ProductsService,
     private inventoryService: InventoryService,
+    private configService: ConfigService,
   ) {}
 
   async create(dto: CreateOrderDto) {
@@ -53,13 +59,18 @@ export class OrdersService {
     );
 
     return this.dataSource.transaction(async (manager) => {
-      const totalAmount = resolvedItems.reduce(
-        (sum, item) => sum + item.subtotal,
-        0,
+      const totalAmount = this.roundCurrency(
+        resolvedItems.reduce((sum, item) => sum + item.subtotal, 0),
       );
-      const discountAmount = dto.discount_amount || 0;
-      const vatAmount = (totalAmount - discountAmount) * 0.07;
-      const netAmount = totalAmount - discountAmount + vatAmount;
+      const discountAmount = this.resolveDiscountAmount(dto, totalAmount);
+      const vatRate = this.getVatRate();
+      const taxableAmount = Math.max(0, totalAmount - discountAmount);
+      const vatAmount = this.roundCurrency(taxableAmount * vatRate);
+      const netAmount = this.roundCurrency(
+        totalAmount - discountAmount + vatAmount,
+      );
+
+      this.assertClientTotals(dto, { totalAmount, vatAmount, netAmount });
 
       const order = manager.create(Order, {
         order_no:
@@ -69,8 +80,8 @@ export class OrdersService {
         staff_id: dto.staff_id,
         total_amount: totalAmount,
         discount_amount: discountAmount,
-        vat_amount: Math.round(vatAmount * 100) / 100,
-        net_amount: Math.round(netAmount * 100) / 100,
+        vat_amount: vatAmount,
+        net_amount: netAmount,
       });
       const savedOrder = await manager.save(order);
 
@@ -153,5 +164,98 @@ export class OrdersService {
       where: { sync_status_acc: false, payment_status: PaymentStatus.PAID },
       relations: ['items', 'payments'],
     });
+  }
+
+  private assertClientTotals(
+    dto: CreateOrderDto,
+    computed: { totalAmount: number; vatAmount: number; netAmount: number },
+  ) {
+    this.assertAmountMatch(
+      'total_amount',
+      dto.total_amount,
+      computed.totalAmount,
+    );
+    this.assertAmountMatch('vat_amount', dto.vat_amount, computed.vatAmount);
+    this.assertAmountMatch('net_amount', dto.net_amount, computed.netAmount);
+  }
+
+  private assertAmountMatch(
+    field: 'total_amount' | 'vat_amount' | 'net_amount',
+    provided: number | undefined,
+    expected: number,
+  ) {
+    if (provided == null) {
+      return;
+    }
+
+    const normalizedProvided = this.roundCurrency(provided);
+    const normalizedExpected = this.roundCurrency(expected);
+    if (
+      Math.abs(normalizedProvided - normalizedExpected) >
+      OrdersService.AMOUNT_TOLERANCE
+    ) {
+      throw new BadRequestException(
+        `${field} mismatch: expected ${normalizedExpected.toFixed(2)}`,
+      );
+    }
+  }
+
+  private resolveDiscountAmount(dto: CreateOrderDto, totalAmount: number) {
+    const hasFlatDiscount = dto.discount_amount != null;
+    const hasPercentDiscount = dto.discount_percent != null;
+    if (hasFlatDiscount && hasPercentDiscount) {
+      throw new BadRequestException(
+        'Provide only one of discount_amount or discount_percent',
+      );
+    }
+
+    const discountType =
+      dto.discount_type ?? (hasPercentDiscount ? 'percent' : 'flat');
+
+    if (discountType === 'percent') {
+      const percent = dto.discount_percent ?? 0;
+      if (percent < 0 || percent > 100) {
+        throw new BadRequestException(
+          'discount_percent must be between 0 and 100',
+        );
+      }
+      return this.roundCurrency((totalAmount * percent) / 100);
+    }
+
+    const amount = dto.discount_amount ?? 0;
+    if (amount < 0) {
+      throw new BadRequestException('discount_amount must be >= 0');
+    }
+    if (amount > totalAmount) {
+      throw new BadRequestException(
+        'discount_amount cannot exceed total_amount',
+      );
+    }
+    return this.roundCurrency(amount);
+  }
+
+  private getVatRate() {
+    const configuredVatRate = this.configService.get<string>('VAT_RATE');
+    if (!configuredVatRate) {
+      return OrdersService.DEFAULT_VAT_RATE;
+    }
+
+    const parsedRate = Number(configuredVatRate);
+    if (Number.isNaN(parsedRate) || parsedRate < 0) {
+      return OrdersService.DEFAULT_VAT_RATE;
+    }
+
+    if (parsedRate <= 1) {
+      return parsedRate;
+    }
+
+    return parsedRate / 100;
+  }
+
+  private roundCurrency(value: number) {
+    return (
+      Math.round((value + Number.EPSILON) * OrdersService.CURRENCY_PRECISION) /
+      OrdersService.CURRENCY_PRECISION
+    );
   }
 }
