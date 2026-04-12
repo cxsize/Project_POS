@@ -22,9 +22,13 @@ class OrderItemLocal {
   late double unitPrice;
   late double subtotal;
 
-  factory OrderItemLocal.fromDomain(String orderIdValue, OrderItem item) {
+  factory OrderItemLocal.fromDomain(
+    String orderIdValue,
+    OrderItem item, {
+    String? remoteId,
+  }) {
     return OrderItemLocal()
-      ..remoteId = item.id
+      ..remoteId = remoteId ?? item.id
       ..orderId = orderIdValue
       ..productId = item.productId
       ..qty = item.qty

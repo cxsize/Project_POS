@@ -29,6 +29,14 @@ export class CreateOrderItemDto {
 }
 
 export class CreateOrderDto {
+  @ApiPropertyOptional({
+    example: '8cf0ab9d-71d6-4bce-a29c-4efd29f6cb35',
+    description: 'Client-generated idempotency key for offline order sync.',
+  })
+  @IsUUID()
+  @IsOptional()
+  order_no?: string;
+
   @ApiProperty()
   @IsUUID()
   branch_id: string;
