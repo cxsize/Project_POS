@@ -28,6 +28,16 @@ export class OrdersService {
   ) {}
 
   async create(dto: CreateOrderDto) {
+    if (dto.order_no) {
+      const existingOrder = await this.ordersRepository.findOne({
+        where: { order_no: dto.order_no },
+        relations: ['items', 'payments'],
+      });
+      if (existingOrder) {
+        return existingOrder;
+      }
+    }
+
     // Validate all products exist and resolve prices
     const resolvedItems = await Promise.all(
       dto.items.map(async (item) => {
@@ -52,7 +62,9 @@ export class OrdersService {
       const netAmount = totalAmount - discountAmount + vatAmount;
 
       const order = manager.create(Order, {
-        order_no: `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        order_no:
+          dto.order_no ??
+          `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         branch_id: dto.branch_id,
         staff_id: dto.staff_id,
         total_amount: totalAmount,
