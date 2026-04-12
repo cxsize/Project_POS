@@ -17,6 +17,7 @@ import '../widgets/product_tile.dart';
 import 'login_screen.dart';
 import 'order_history_screen.dart';
 import 'payment_screen.dart';
+import 'settings_screen.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
@@ -206,6 +207,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const OrderHistoryScreen()),
               ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.print),
+              tooltip: 'Printer Settings',
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
             ),
             IconButton(
               icon: const Icon(Icons.logout),

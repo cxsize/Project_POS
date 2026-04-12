@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/offline_sync_service.dart';
 import '../services/order_service.dart';
+import '../services/printer/printer_service.dart';
 import '../services/product_service.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
@@ -47,4 +48,8 @@ final offlineSyncServiceProvider = Provider<OfflineSyncService>((ref) {
     service.stop();
   });
   return service;
+});
+
+final printerServiceProvider = Provider<PrinterService>((ref) {
+  return PrinterService();
 });

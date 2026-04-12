@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth access to connect thermal receipt printers.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Bluetooth access to interact with thermal receipt printers.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Local network access is used to print receipts to LAN thermal printers.</string>
 </dict>
 </plist>
