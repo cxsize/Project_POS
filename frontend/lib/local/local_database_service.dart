@@ -296,7 +296,14 @@ class LocalDatabaseService {
         )
         .findAll();
 
-    queueItems.sort((left, right) => left.createdAt.compareTo(right.createdAt));
+    queueItems.sort((left, right) {
+      final createdAtComparison = left.createdAt.compareTo(right.createdAt);
+      if (createdAtComparison != 0) {
+        return createdAtComparison;
+      }
+
+      return _syncQueuePriority(left).compareTo(_syncQueuePriority(right));
+    });
     return queueItems;
   }
 
@@ -342,5 +349,15 @@ class LocalDatabaseService {
       return null;
     }
     return orderLocal.remoteId;
+  }
+
+  int _syncQueuePriority(SyncQueueLocal queueItem) {
+    if (queueItem.entityType == 'order' && queueItem.action == 'create') {
+      return 0;
+    }
+    if (queueItem.entityType == 'payment' && queueItem.action == 'create') {
+      return 1;
+    }
+    return 2;
   }
 }

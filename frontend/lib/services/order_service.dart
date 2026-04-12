@@ -10,20 +10,24 @@ import '../models/order.dart';
 import '../models/order_item.dart';
 import '../models/payment.dart';
 import 'api_client.dart';
+import 'connectivity_service.dart';
 
 class OrderService {
-  OrderService(this._client, this._localDatabase);
+  OrderService(
+    this._client,
+    this._localDatabase, {
+    ConnectivityService? connectivityService,
+  }) : _connectivityService = connectivityService ?? ConnectivityService();
 
   final ApiClient _client;
   final LocalDatabaseService _localDatabase;
+  final ConnectivityService _connectivityService;
 
   Future<Order> createOrder({
     required String branchId,
     required String staffId,
     required List<CartItem> items,
   }) async {
-    await syncPendingQueue();
-
     final orderNo = _generateUuid();
     final payload = _buildCreateOrderPayload(
       orderNo: orderNo,
@@ -31,6 +35,18 @@ class OrderService {
       staffId: staffId,
       items: items,
     );
+
+    if (!await _connectivityService.isOnline) {
+      return _createOfflineOrder(
+        branchId: branchId,
+        staffId: staffId,
+        items: items,
+        orderNo: orderNo,
+        payload: payload,
+      );
+    }
+
+    await syncPendingQueue();
 
     try {
       final data =
@@ -46,28 +62,13 @@ class OrderService {
       if (!_isOfflineError(error)) {
         rethrow;
       }
-
-      final localOrder = _buildLocalOrder(
+      return _createOfflineOrder(
         branchId: branchId,
         staffId: staffId,
-        orderNo: orderNo,
         items: items,
+        orderNo: orderNo,
+        payload: payload,
       );
-      await _localDatabase.saveOrderSnapshot(
-        localOrder,
-        remoteId: localOrder.id,
-        localReferenceId: localOrder.id,
-        syncStatusAcc: false,
-        syncedAt: LocalDatabaseService.unsyncedMarker,
-      );
-      await _localDatabase.enqueueSyncAction(
-        queueKey: 'order:create:$orderNo',
-        entityType: 'order',
-        action: 'create',
-        localReferenceId: localOrder.id,
-        payloadJson: jsonEncode(payload),
-      );
-      return localOrder;
     }
   }
 
@@ -78,7 +79,9 @@ class OrderService {
     required double amountReceived,
     String? refNo,
   }) async {
-    await syncPendingQueue();
+    if (await _connectivityService.isOnline) {
+      await syncPendingQueue();
+    }
 
     final remoteOrderId = await _localDatabase.getRemoteOrderIdByOrderNo(
       orderNo,
@@ -123,69 +126,84 @@ class OrderService {
   }
 
   Future<void> syncPendingQueue() async {
-    final queueItems = await _localDatabase.getPendingSyncQueue();
+    if (!await _connectivityService.isOnline) {
+      return;
+    }
 
-    for (final queueItem in queueItems) {
-      try {
-        final payload =
-            jsonDecode(queueItem.payloadJson) as Map<String, dynamic>;
+    var madeProgress = true;
+    while (madeProgress && await _connectivityService.isOnline) {
+      madeProgress = false;
+      final queueItems = await _localDatabase.getPendingSyncQueue();
+      if (queueItems.isEmpty) {
+        return;
+      }
 
-        if (queueItem.entityType == 'order' && queueItem.action == 'create') {
-          final data =
-              await _client.post(
-                    '/orders',
-                    body: Map<String, dynamic>.from(payload),
-                  )
-                  as Map<String, dynamic>;
-          final order = Order.fromJson(data);
-          await _localDatabase.saveOrderSnapshot(
-            order,
-            localReferenceId: queueItem.localReferenceId ?? order.id,
-            syncStatusAcc: order.paymentStatus == 'paid',
-          );
-          await _localDatabase.markSyncQueueCompleted(queueItem.queueKey);
-          continue;
-        }
+      for (final queueItem in queueItems) {
+        try {
+          final payload =
+              jsonDecode(queueItem.payloadJson) as Map<String, dynamic>;
 
-        if (queueItem.entityType == 'payment' && queueItem.action == 'create') {
-          final orderNo = payload['order_no'] as String?;
-          if (orderNo == null) {
-            await _localDatabase.markSyncQueueFailed(queueItem.queueKey);
+          if (queueItem.entityType == 'order' && queueItem.action == 'create') {
+            final data =
+                await _client.post(
+                      '/orders',
+                      body: Map<String, dynamic>.from(payload),
+                    )
+                    as Map<String, dynamic>;
+            final order = Order.fromJson(data);
+            await _localDatabase.saveOrderSnapshot(
+              order,
+              localReferenceId: queueItem.localReferenceId ?? order.id,
+              syncStatusAcc: order.paymentStatus == 'paid',
+            );
+            await _localDatabase.markSyncQueueCompleted(queueItem.queueKey);
+            madeProgress = true;
             continue;
           }
 
-          final remoteOrderId = await _localDatabase.getRemoteOrderIdByOrderNo(
-            orderNo,
-          );
-          if (remoteOrderId == null) {
-            continue;
-          }
+          if (queueItem.entityType == 'payment' &&
+              queueItem.action == 'create') {
+            final orderNo = payload['order_no'] as String?;
+            if (orderNo == null) {
+              await _localDatabase.markSyncQueueFailed(queueItem.queueKey);
+              madeProgress = true;
+              continue;
+            }
 
-          final data =
-              await _client.post(
-                    '/orders/$remoteOrderId/payments',
-                    body: {
-                      'method': payload['method'],
-                      'amount_received': payload['amount_received'],
-                      if (payload['ref_no'] != null)
-                        'ref_no': payload['ref_no'],
-                    },
-                  )
-                  as Map<String, dynamic>;
-          data.remove('change');
-          final order = Order.fromJson(data);
-          await _localDatabase.saveOrderSnapshot(
-            order,
-            localReferenceId: queueItem.localReferenceId ?? order.id,
-            syncStatusAcc: order.paymentStatus == 'paid',
-          );
-          await _localDatabase.markSyncQueueCompleted(queueItem.queueKey);
+            final remoteOrderId = await _localDatabase
+                .getRemoteOrderIdByOrderNo(orderNo);
+            if (remoteOrderId == null) {
+              continue;
+            }
+
+            final data =
+                await _client.post(
+                      '/orders/$remoteOrderId/payments',
+                      body: {
+                        'method': payload['method'],
+                        'amount_received': payload['amount_received'],
+                        if (payload['ref_no'] != null)
+                          'ref_no': payload['ref_no'],
+                      },
+                    )
+                    as Map<String, dynamic>;
+            data.remove('change');
+            final order = Order.fromJson(data);
+            await _localDatabase.saveOrderSnapshot(
+              order,
+              localReferenceId: queueItem.localReferenceId ?? order.id,
+              syncStatusAcc: order.paymentStatus == 'paid',
+            );
+            await _localDatabase.markSyncQueueCompleted(queueItem.queueKey);
+            madeProgress = true;
+          }
+        } catch (error) {
+          if (_isOfflineError(error)) {
+            return;
+          }
+          await _localDatabase.markSyncQueueFailed(queueItem.queueKey);
+          madeProgress = true;
         }
-      } catch (error) {
-        if (_isOfflineError(error)) {
-          break;
-        }
-        await _localDatabase.markSyncQueueFailed(queueItem.queueKey);
       }
     }
   }
@@ -324,6 +342,36 @@ class OrderService {
           )
           .toList(),
     };
+  }
+
+  Future<Order> _createOfflineOrder({
+    required String branchId,
+    required String staffId,
+    required List<CartItem> items,
+    required String orderNo,
+    required Map<String, dynamic> payload,
+  }) async {
+    final localOrder = _buildLocalOrder(
+      branchId: branchId,
+      staffId: staffId,
+      orderNo: orderNo,
+      items: items,
+    );
+    await _localDatabase.saveOrderSnapshot(
+      localOrder,
+      remoteId: localOrder.id,
+      localReferenceId: localOrder.id,
+      syncStatusAcc: false,
+      syncedAt: LocalDatabaseService.unsyncedMarker,
+    );
+    await _localDatabase.enqueueSyncAction(
+      queueKey: 'order:create:$orderNo',
+      entityType: 'order',
+      action: 'create',
+      localReferenceId: localOrder.id,
+      payloadJson: jsonEncode(payload),
+    );
+    return localOrder;
   }
 
   Order _buildLocalOrder({

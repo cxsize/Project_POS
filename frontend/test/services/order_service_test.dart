@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_frontend/local/local_database_service.dart';
 import 'package:pos_frontend/local/models/sync_queue_local.dart';
@@ -8,6 +7,7 @@ import 'package:pos_frontend/models/category.dart';
 import 'package:pos_frontend/models/order.dart';
 import 'package:pos_frontend/models/product.dart';
 import 'package:pos_frontend/services/api_client.dart';
+import 'package:pos_frontend/services/connectivity_service.dart';
 import 'package:pos_frontend/services/order_service.dart';
 
 void main() {
@@ -17,11 +17,15 @@ void main() {
       () async {
         final apiClient = FakeOrderApiClient(
           postResponses: {
-            '/orders': [const SocketException('offline')],
+            '/orders': const [],
           },
         );
         final localDatabase = InMemoryLocalDatabaseService();
-        final service = OrderService(apiClient, localDatabase);
+        final service = OrderService(
+          apiClient,
+          localDatabase,
+          connectivityService: FakeConnectivityService(isOnline: false),
+        );
 
         final order = await service.createOrder(
           branchId: _branchId,
@@ -70,18 +74,17 @@ void main() {
       );
       final apiClient = FakeOrderApiClient(
         postResponses: {
-          '/orders': [
-            const SocketException('offline'),
-            queuedCreateOrderResponse,
-          ],
-          '/orders/$remoteOrderId/payments': [
-            const SocketException('offline'),
-            queuedPaymentResponse,
-          ],
+          '/orders': [queuedCreateOrderResponse],
+          '/orders/$remoteOrderId/payments': [queuedPaymentResponse],
         },
       );
       final localDatabase = InMemoryLocalDatabaseService();
-      final service = OrderService(apiClient, localDatabase);
+      final connectivityService = FakeConnectivityService(isOnline: false);
+      final service = OrderService(
+        apiClient,
+        localDatabase,
+        connectivityService: connectivityService,
+      );
 
       final localOrder = await service.createOrder(
         branchId: _branchId,
@@ -99,21 +102,20 @@ void main() {
       );
 
       expect(paymentResult.order.paymentStatus, 'paid');
-      expect(localDatabase.queueItems, hasLength(1));
-      expect(localDatabase.queueItems.single.entityType, 'payment');
+      expect(localDatabase.queueItems, hasLength(2));
+      expect(
+        localDatabase.queueItems.map((entry) => entry.entityType),
+        containsAll(['order', 'payment']),
+      );
 
       queuedPaymentResponse['order_no'] = localOrder.orderNo;
+      connectivityService.setOnline(true);
 
       await service.syncPendingQueue();
 
       expect(
         apiClient.requestLog,
-        containsAll([
-          'POST /orders',
-          'POST /orders',
-          'POST /orders/$remoteOrderId/payments',
-          'POST /orders/$remoteOrderId/payments',
-        ]),
+        containsAll(['POST /orders', 'POST /orders/$remoteOrderId/payments']),
       );
       expect(localDatabase.queueItems, isEmpty);
       final syncedOrder = localDatabase.orders.single;
@@ -266,7 +268,14 @@ class InMemoryLocalDatabaseService extends LocalDatabaseService {
       for (final item in queueItems)
         if (item.status == 'pending' || item.status == 'failed') item,
     ];
-    copied.sort((left, right) => left.createdAt.compareTo(right.createdAt));
+    copied.sort((left, right) {
+      final createdAtComparison = left.createdAt.compareTo(right.createdAt);
+      if (createdAtComparison != 0) {
+        return createdAtComparison;
+      }
+
+      return _syncQueuePriority(left).compareTo(_syncQueuePriority(right));
+    });
     return copied;
   }
 
@@ -295,6 +304,38 @@ class InMemoryLocalDatabaseService extends LocalDatabaseService {
 
   String? getRemoteOrderIdByOrderNoValue(String orderNo) {
     return _remoteIdByOrderNo[orderNo];
+  }
+
+  int _syncQueuePriority(SyncQueueLocal queueItem) {
+    if (queueItem.entityType == 'order' && queueItem.action == 'create') {
+      return 0;
+    }
+    if (queueItem.entityType == 'payment' && queueItem.action == 'create') {
+      return 1;
+    }
+    return 2;
+  }
+}
+
+class FakeConnectivityService extends ConnectivityService {
+  FakeConnectivityService({required bool isOnline}) : _isOnline = isOnline;
+
+  bool _isOnline;
+
+  void setOnline(bool value) {
+    _isOnline = value;
+  }
+
+  @override
+  Future<bool> get isOnline async => _isOnline;
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged =>
+      const Stream.empty();
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async {
+    return [_isOnline ? ConnectivityResult.wifi : ConnectivityResult.none];
   }
 }
 
