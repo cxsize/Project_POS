@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BranchesModule } from './branches/branches.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccountingModule } from './accounting/accounting.module';
@@ -16,6 +17,7 @@ import { ProductsModule } from './products/products.module';
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
+    BranchesModule,
     AuthModule,
     ProductsModule,
     InventoryModule,

@@ -1,6 +1,7 @@
 import * as bcrypt from 'bcrypt';
 import { DataSource } from 'typeorm';
 import { User, UserRole } from '../auth/entities/user.entity';
+import { Branch } from '../branches/entities/branch.entity';
 import { Ingredient } from '../inventory/entities/ingredient.entity';
 import { Recipe } from '../inventory/entities/recipe.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
@@ -19,6 +20,7 @@ async function seed() {
     database: process.env.DB_DATABASE || 'pos_db',
     entities: [
       User,
+      Branch,
       Category,
       Product,
       Ingredient,
@@ -34,6 +36,19 @@ async function seed() {
   console.log('Database connected');
 
   // Seed Users
+  const branchesRepo = dataSource.getRepository(Branch);
+  let defaultBranch = await branchesRepo.findOne({
+    where: { name: 'Main Branch' },
+  });
+  if (!defaultBranch) {
+    defaultBranch = await branchesRepo.save({
+      name: 'Main Branch',
+      address: 'Headquarters',
+    });
+    console.log('Default branch seeded');
+  }
+
+  // Seed Users
   const usersRepo = dataSource.getRepository(User);
   const existingAdmin = await usersRepo.findOne({
     where: { username: 'admin' },
@@ -46,12 +61,14 @@ async function seed() {
         password_hash: passwordHash,
         full_name: 'Admin User',
         role: UserRole.ADMIN,
+        branch_id: defaultBranch.id,
       },
       {
         username: 'cashier1',
         password_hash: await bcrypt.hash('cashier123', 10),
         full_name: 'Cashier One',
         role: UserRole.CASHIER,
+        branch_id: defaultBranch.id,
       },
     ]);
     console.log('Users seeded (admin/admin123, cashier1/cashier123)');
