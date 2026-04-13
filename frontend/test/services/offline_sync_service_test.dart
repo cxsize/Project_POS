@@ -15,6 +15,7 @@ void main() {
     final offlineSyncService = OfflineSyncService(
       connectivityService,
       orderService,
+      pollInterval: const Duration(minutes: 5),
     );
 
     offlineSyncService.start();
@@ -28,6 +29,54 @@ void main() {
 
     expect(orderService.syncCalls, 1);
 
+    await offlineSyncService.stop();
+  });
+
+  test('polls sync queue periodically while online', () async {
+    final connectivityService = StreamConnectivityService(isOnline: true);
+    final orderService = TrackingOrderService(connectivityService);
+    final offlineSyncService = OfflineSyncService(
+      connectivityService,
+      orderService,
+      pollInterval: const Duration(milliseconds: 20),
+    );
+
+    offlineSyncService.start();
+    await Future<void>.delayed(const Duration(milliseconds: 75));
+
+    expect(orderService.syncCalls, greaterThanOrEqualTo(2));
+    await offlineSyncService.stop();
+  });
+
+  test('retries with exponential backoff after sync errors', () async {
+    final connectivityService = StreamConnectivityService(isOnline: true);
+    var callCount = 0;
+    final orderService = TrackingOrderService(
+      connectivityService,
+      behavior: () async {
+        callCount += 1;
+        if (callCount < 3) {
+          throw StateError('temporary sync failure');
+        }
+      },
+    );
+    final offlineSyncService = OfflineSyncService(
+      connectivityService,
+      orderService,
+      pollInterval: const Duration(minutes: 5),
+      initialRetryDelay: const Duration(milliseconds: 10),
+      maxRetryDelay: const Duration(milliseconds: 40),
+    );
+
+    final stopwatch = Stopwatch()..start();
+    offlineSyncService.start();
+
+    while (orderService.syncCalls < 3 && stopwatch.elapsedMilliseconds < 200) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    expect(orderService.syncCalls, 3);
+    expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(25));
     await offlineSyncService.stop();
   });
 }
@@ -58,18 +107,25 @@ class StreamConnectivityService extends ConnectivityService {
 }
 
 class TrackingOrderService extends OrderService {
-  TrackingOrderService(ConnectivityService connectivityService)
-    : super(
-        _NoopApiClient(),
-        LocalDatabaseService(),
-        connectivityService: connectivityService,
-      );
+  TrackingOrderService(
+    ConnectivityService connectivityService, {
+    Future<void> Function()? behavior,
+  }) : _behavior = behavior,
+       super(
+         _NoopApiClient(),
+         LocalDatabaseService(),
+         connectivityService: connectivityService,
+       );
 
+  final Future<void> Function()? _behavior;
   int syncCalls = 0;
 
   @override
   Future<void> syncPendingQueue() async {
     syncCalls += 1;
+    if (_behavior != null) {
+      await _behavior();
+    }
   }
 }
 
