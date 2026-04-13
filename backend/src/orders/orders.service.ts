@@ -159,6 +159,30 @@ export class OrdersService {
     return { ...updatedOrder, change };
   }
 
+  async voidOrder(id: string) {
+    const order = await this.findOne(id);
+    if (order.payment_status === PaymentStatus.VOID) {
+      throw new BadRequestException('Order is already void');
+    }
+    if (order.sync_status_acc) {
+      throw new BadRequestException(
+        'Cannot void order after accounting sync completed',
+      );
+    }
+
+    if (order.payment_status === PaymentStatus.PAID) {
+      for (const item of order.items) {
+        await this.inventoryService.restoreStock(item.product_id, item.qty);
+      }
+    }
+
+    await this.ordersRepository.update(id, {
+      payment_status: PaymentStatus.VOID,
+    });
+
+    return this.findOne(id);
+  }
+
   findUnsynced() {
     return this.ordersRepository.find({
       where: { sync_status_acc: false, payment_status: PaymentStatus.PAID },

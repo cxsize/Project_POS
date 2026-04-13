@@ -123,3 +123,86 @@ describe('OrdersService.create', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe('OrdersService.voidOrder', () => {
+  let service: OrdersService;
+  const ordersRepository = {
+    findOne: jest.fn(),
+    update: jest.fn().mockResolvedValue(undefined),
+  } as unknown as Repository<Order>;
+  const orderItemsRepository = {} as Repository<OrderItem>;
+  const paymentsRepository = {} as Repository<Payment>;
+  const dataSource = {} as DataSource;
+  const productsService = {} as ProductsService;
+  const inventoryService = {
+    restoreStock: jest.fn().mockResolvedValue(undefined),
+  } as unknown as InventoryService;
+  const configService = {
+    get: jest.fn(),
+  } as unknown as ConfigService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new OrdersService(
+      ordersRepository,
+      orderItemsRepository,
+      paymentsRepository,
+      dataSource,
+      productsService,
+      inventoryService,
+      configService,
+    );
+  });
+
+  it('rejects void when order has already synced to accounting', async () => {
+    ordersRepository.findOne = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'order-id',
+        payment_status: 'paid',
+        sync_status_acc: true,
+        items: [],
+        payments: [],
+      })
+      .mockResolvedValueOnce({
+        id: 'order-id',
+        payment_status: 'paid',
+        sync_status_acc: true,
+        items: [],
+        payments: [],
+      });
+
+    await expect(service.voidOrder('order-id')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(inventoryService.restoreStock).not.toHaveBeenCalled();
+    expect(ordersRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('voids paid order and restores stock', async () => {
+    ordersRepository.findOne = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'order-id',
+        payment_status: 'paid',
+        sync_status_acc: false,
+        items: [{ product_id: 'product-1', qty: 2 }],
+        payments: [],
+      })
+      .mockResolvedValueOnce({
+        id: 'order-id',
+        payment_status: 'void',
+        sync_status_acc: false,
+        items: [{ product_id: 'product-1', qty: 2 }],
+        payments: [],
+      });
+
+    const result = await service.voidOrder('order-id');
+
+    expect(inventoryService.restoreStock).toHaveBeenCalledWith('product-1', 2);
+    expect(ordersRepository.update).toHaveBeenCalledWith('order-id', {
+      payment_status: 'void',
+    });
+    expect(result.payment_status).toBe('void');
+  });
+});

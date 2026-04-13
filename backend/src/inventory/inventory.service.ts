@@ -67,4 +67,21 @@ export class InventoryService {
         .execute();
     }
   }
+
+  async restoreStock(productId: string, qty: number) {
+    const recipes = await this.recipesRepository.find({
+      where: { product_id: productId },
+      relations: ['ingredient'],
+    });
+
+    for (const recipe of recipes) {
+      const increment = recipe.usage_qty * qty;
+      await this.ingredientsRepository
+        .createQueryBuilder()
+        .update(Ingredient)
+        .set({ stock_qty: () => `stock_qty + ${increment}` })
+        .where('id = :id', { id: recipe.ingredient_id })
+        .execute();
+    }
+  }
 }
