@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/app_bootstrap_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/service_providers.dart';
 import 'checkout_screen.dart';
 import 'login_screen.dart';
 import 'order_history_screen.dart';
@@ -18,9 +21,11 @@ class AppBootstrapScreen extends ConsumerWidget {
     return bootstrap.when(
       data: (_) {
         if (!auth.isAuthenticated) {
+          unawaited(ref.read(offlineSyncServiceProvider).stop());
           return const LoginScreen();
         }
 
+        unawaited(ref.read(offlineSyncServiceProvider).start());
         if (auth.user?.role == 'cashier') {
           return const CheckoutScreen();
         }
