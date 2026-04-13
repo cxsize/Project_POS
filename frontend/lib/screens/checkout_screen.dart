@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/cart_item.dart';
@@ -24,6 +27,9 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   late final TextEditingController _searchController;
+  late final FocusNode _hidFocusNode;
+  final StringBuffer _hidScanBuffer = StringBuffer();
+  Timer? _hidScanDebounce;
 
   @override
   void initState() {
@@ -31,10 +37,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _searchController = TextEditingController(
       text: ref.read(productSearchQueryProvider),
     );
+    _hidFocusNode = FocusNode(debugLabel: 'checkout_hid_listener');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestHidFocus();
+    });
   }
 
   @override
   void dispose() {
+    _hidScanDebounce?.cancel();
+    _hidFocusNode.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -48,6 +60,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Future<void> _handleBarcodeSubmit(String rawValue) async {
     final barcode = rawValue.trim();
     if (barcode.isEmpty) {
+      _requestHidFocus();
       return;
     }
 
@@ -68,6 +81,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           duration: const Duration(milliseconds: 900),
         ),
       );
+      _requestHidFocus();
       return;
     }
 
@@ -79,6 +93,57 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         ),
       ),
     );
+    _requestHidFocus();
+  }
+
+  void _requestHidFocus() {
+    if (!mounted || _hidFocusNode.hasFocus) {
+      return;
+    }
+    FocusScope.of(context).requestFocus(_hidFocusNode);
+  }
+
+  void _handleHidKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return;
+    }
+
+    if (HardwareKeyboard.instance.isAltPressed ||
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed) {
+      return;
+    }
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      final rawScan = _hidScanBuffer.toString();
+      _hidScanBuffer.clear();
+      _hidScanDebounce?.cancel();
+      unawaited(_handleBarcodeSubmit(rawScan));
+      return;
+    }
+
+    if (key == LogicalKeyboardKey.backspace) {
+      final existing = _hidScanBuffer.toString();
+      if (existing.isNotEmpty) {
+        _hidScanBuffer
+          ..clear()
+          ..write(existing.substring(0, existing.length - 1));
+      }
+      return;
+    }
+
+    final character = event.character;
+    if (character == null || character.isEmpty) {
+      return;
+    }
+
+    _hidScanBuffer.write(character);
+    _hidScanDebounce?.cancel();
+    _hidScanDebounce = Timer(const Duration(milliseconds: 500), () {
+      _hidScanBuffer.clear();
+    });
   }
 
   Future<void> _logout() async {
@@ -126,68 +191,105 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 960;
+      body: KeyboardListener(
+        focusNode: _hidFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleHidKeyEvent,
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _requestHidFocus();
+            });
+          },
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 960;
 
-          if (isCompact) {
-            return Column(
-              children: [
-                Expanded(child: _buildCatalogPanel(context)),
-                Container(height: 1, color: Theme.of(context).dividerColor),
-                SizedBox(
-                  height: 360,
-                  child: _CartPanel(
-                    cart: cart,
-                    cartTotal: cartTotal,
-                    cartVat: cartVat,
-                    cartNet: cartNet,
-                    isSubmitting: orderState.isLoading,
-                    onClear: () => ref.read(cartProvider.notifier).clear(),
-                    onCheckout: () => _checkout(cart),
-                    onIncrement: (item) => ref
-                        .read(cartProvider.notifier)
-                        .incrementQty(item.product.id),
-                    onDecrement: (item) => ref
-                        .read(cartProvider.notifier)
-                        .decrementQty(item.product.id),
-                    onRemove: (item) => ref
-                        .read(cartProvider.notifier)
-                        .removeItem(item.product.id),
+              if (isCompact) {
+                return Column(
+                  children: [
+                    Expanded(child: _buildCatalogPanel(context)),
+                    Container(height: 1, color: Theme.of(context).dividerColor),
+                    SizedBox(
+                      height: 360,
+                      child: _CartPanel(
+                        cart: cart,
+                        cartTotal: cartTotal,
+                        cartVat: cartVat,
+                        cartNet: cartNet,
+                        isSubmitting: orderState.isLoading,
+                        onClear: () {
+                          ref.read(cartProvider.notifier).clear();
+                          _requestHidFocus();
+                        },
+                        onCheckout: () => _checkout(cart),
+                        onIncrement: (item) {
+                          ref
+                              .read(cartProvider.notifier)
+                              .incrementQty(item.product.id);
+                          _requestHidFocus();
+                        },
+                        onDecrement: (item) {
+                          ref
+                              .read(cartProvider.notifier)
+                              .decrementQty(item.product.id);
+                          _requestHidFocus();
+                        },
+                        onRemove: (item) {
+                          ref
+                              .read(cartProvider.notifier)
+                              .removeItem(item.product.id);
+                          _requestHidFocus();
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(flex: 65, child: _buildCatalogPanel(context)),
+                  Container(width: 1, color: Theme.of(context).dividerColor),
+                  Expanded(
+                    flex: 35,
+                    child: _CartPanel(
+                      cart: cart,
+                      cartTotal: cartTotal,
+                      cartVat: cartVat,
+                      cartNet: cartNet,
+                      isSubmitting: orderState.isLoading,
+                      onClear: () {
+                        ref.read(cartProvider.notifier).clear();
+                        _requestHidFocus();
+                      },
+                      onCheckout: () => _checkout(cart),
+                      onIncrement: (item) {
+                        ref
+                            .read(cartProvider.notifier)
+                            .incrementQty(item.product.id);
+                        _requestHidFocus();
+                      },
+                      onDecrement: (item) {
+                        ref
+                            .read(cartProvider.notifier)
+                            .decrementQty(item.product.id);
+                        _requestHidFocus();
+                      },
+                      onRemove: (item) {
+                        ref
+                            .read(cartProvider.notifier)
+                            .removeItem(item.product.id);
+                        _requestHidFocus();
+                      },
+                    ),
                   ),
-                ),
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Expanded(flex: 65, child: _buildCatalogPanel(context)),
-              Container(width: 1, color: Theme.of(context).dividerColor),
-              Expanded(
-                flex: 35,
-                child: _CartPanel(
-                  cart: cart,
-                  cartTotal: cartTotal,
-                  cartVat: cartVat,
-                  cartNet: cartNet,
-                  isSubmitting: orderState.isLoading,
-                  onClear: () => ref.read(cartProvider.notifier).clear(),
-                  onCheckout: () => _checkout(cart),
-                  onIncrement: (item) => ref
-                      .read(cartProvider.notifier)
-                      .incrementQty(item.product.id),
-                  onDecrement: (item) => ref
-                      .read(cartProvider.notifier)
-                      .decrementQty(item.product.id),
-                  onRemove: (item) => ref
-                      .read(cartProvider.notifier)
-                      .removeItem(item.product.id),
-                ),
-              ),
-            ],
-          );
-        },
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -352,8 +454,9 @@ class _ProductGrid extends ConsumerWidget {
                   final product = products[i];
                   return ProductTile(
                     product: product,
-                    onTap: () =>
-                        ref.read(cartProvider.notifier).addItem(product),
+                    onTap: () {
+                      ref.read(cartProvider.notifier).addItem(product);
+                    },
                   );
                 },
               ),
