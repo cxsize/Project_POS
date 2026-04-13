@@ -55,7 +55,7 @@ class OrderService {
       await _localDatabase.saveOrderSnapshot(
         order,
         localReferenceId: order.id,
-        syncStatusAcc: order.paymentStatus == 'paid',
+        syncStatusAcc: order.syncStatusAcc,
       );
       return order;
     } catch (error) {
@@ -105,7 +105,7 @@ class OrderService {
         await _localDatabase.saveOrderSnapshot(
           order,
           localReferenceId: orderId,
-          syncStatusAcc: order.paymentStatus == 'paid',
+          syncStatusAcc: order.syncStatusAcc,
         );
 
         return (order: order.copyWith(id: orderId), change: change);
@@ -154,7 +154,7 @@ class OrderService {
             await _localDatabase.saveOrderSnapshot(
               order,
               localReferenceId: queueItem.localReferenceId ?? order.id,
-              syncStatusAcc: order.paymentStatus == 'paid',
+              syncStatusAcc: order.syncStatusAcc,
             );
             await _localDatabase.markSyncQueueCompleted(queueItem.queueKey);
             madeProgress = true;
@@ -192,7 +192,7 @@ class OrderService {
             await _localDatabase.saveOrderSnapshot(
               order,
               localReferenceId: queueItem.localReferenceId ?? order.id,
-              syncStatusAcc: order.paymentStatus == 'paid',
+              syncStatusAcc: order.syncStatusAcc,
             );
             await _localDatabase.markSyncQueueCompleted(queueItem.queueKey);
             madeProgress = true;
@@ -399,6 +399,7 @@ class OrderService {
       vatAmount: vatAmount,
       netAmount: netAmount,
       paymentStatus: 'pending',
+      syncStatusAcc: false,
       createdAt: createdAt,
       items: items
           .map(
@@ -452,6 +453,7 @@ extension on Order {
     double? vatAmount,
     double? netAmount,
     String? paymentStatus,
+    bool? syncStatusAcc,
     DateTime? createdAt,
     List<OrderItem>? items,
     List<Payment>? payments,
@@ -466,6 +468,7 @@ extension on Order {
       vatAmount: vatAmount ?? this.vatAmount,
       netAmount: netAmount ?? this.netAmount,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      syncStatusAcc: syncStatusAcc ?? this.syncStatusAcc,
       createdAt: createdAt ?? this.createdAt,
       items: items ?? this.items,
       payments: payments ?? this.payments,

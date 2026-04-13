@@ -52,7 +52,7 @@ class OrderLocal {
       ..vatAmount = order.vatAmount
       ..netAmount = order.netAmount
       ..paymentStatus = order.paymentStatus
-      ..syncStatusAcc = syncStatusAcc ?? order.paymentStatus == 'paid'
+      ..syncStatusAcc = syncStatusAcc ?? order.syncStatusAcc
       ..createdAt = order.createdAt
       ..syncedAt = syncedAt ?? DateTime.now();
   }

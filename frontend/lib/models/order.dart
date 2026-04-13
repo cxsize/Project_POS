@@ -11,6 +11,7 @@ class Order {
   final double vatAmount;
   final double netAmount;
   final String paymentStatus;
+  final bool syncStatusAcc;
   final DateTime createdAt;
   final List<OrderItem> items;
   final List<Payment> payments;
@@ -25,6 +26,7 @@ class Order {
     required this.vatAmount,
     required this.netAmount,
     required this.paymentStatus,
+    required this.syncStatusAcc,
     required this.createdAt,
     this.items = const [],
     this.payments = const [],
@@ -41,6 +43,7 @@ class Order {
       vatAmount: double.parse(json['vat_amount'].toString()),
       netAmount: double.parse(json['net_amount'].toString()),
       paymentStatus: json['payment_status'] as String,
+      syncStatusAcc: _toBool(json['sync_status_acc']),
       createdAt: DateTime.parse(json['created_at'] as String),
       items:
           (json['items'] as List<dynamic>?)
@@ -53,5 +56,19 @@ class Order {
               .toList() ??
           [],
     );
+  }
+
+  static bool _toBool(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == '1';
+    }
+    return false;
   }
 }

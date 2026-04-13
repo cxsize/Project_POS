@@ -16,9 +16,7 @@ void main() {
       'createOrder stores a local snapshot and queue entry when offline',
       () async {
         final apiClient = FakeOrderApiClient(
-          postResponses: {
-            '/orders': const [],
-          },
+          postResponses: {'/orders': const []},
         );
         final localDatabase = InMemoryLocalDatabaseService();
         final service = OrderService(
@@ -154,6 +152,7 @@ Map<String, dynamic> _buildOrderResponse({
   required String id,
   required String orderNo,
   required String paymentStatus,
+  bool syncStatusAcc = false,
   required List<Map<String, dynamic>> payments,
   Map<String, dynamic> extra = const {},
 }) {
@@ -167,6 +166,7 @@ Map<String, dynamic> _buildOrderResponse({
     'vat_amount': 5.95,
     'net_amount': 90.95,
     'payment_status': paymentStatus,
+    'sync_status_acc': syncStatusAcc,
     'created_at': DateTime.utc(2026, 4, 12, 12).toIso8601String(),
     'items': [
       {
@@ -350,6 +350,7 @@ extension on Order {
     double? vatAmount,
     double? netAmount,
     String? paymentStatus,
+    bool? syncStatusAcc,
     DateTime? createdAt,
     List<dynamic>? items,
     List<dynamic>? payments,
@@ -364,6 +365,7 @@ extension on Order {
       vatAmount: vatAmount ?? this.vatAmount,
       netAmount: netAmount ?? this.netAmount,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      syncStatusAcc: syncStatusAcc ?? this.syncStatusAcc,
       createdAt: createdAt ?? this.createdAt,
       items: (items ?? this.items).cast(),
       payments: (payments ?? this.payments).cast(),

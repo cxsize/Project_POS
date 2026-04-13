@@ -219,6 +219,7 @@ class LocalDatabaseService {
             vatAmount: orderLocal.vatAmount,
             netAmount: orderLocal.netAmount,
             paymentStatus: orderLocal.paymentStatus,
+            syncStatusAcc: orderLocal.syncStatusAcc,
             createdAt: orderLocal.createdAt,
             items: orderItems
                 .map(
