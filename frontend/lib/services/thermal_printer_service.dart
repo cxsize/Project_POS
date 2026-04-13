@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+
 class ReceiptLineItem {
   ReceiptLineItem({
     required this.name,
@@ -60,7 +62,48 @@ class BluetoothPrinterTarget extends PrinterTarget {
   final String deviceAddress;
 }
 
+abstract class BluetoothPrinterClient {
+  Future<bool> ensurePermissionGranted();
+  Future<bool> ensureBluetoothEnabled();
+  Future<bool> connect(String deviceAddress);
+  Future<bool> writeBytes(List<int> bytes);
+  Future<bool> disconnect();
+}
+
+class PluginBluetoothPrinterClient implements BluetoothPrinterClient {
+  @override
+  Future<bool> ensurePermissionGranted() {
+    return PrintBluetoothThermal.isPermissionBluetoothGranted;
+  }
+
+  @override
+  Future<bool> ensureBluetoothEnabled() {
+    return PrintBluetoothThermal.bluetoothEnabled;
+  }
+
+  @override
+  Future<bool> connect(String deviceAddress) {
+    return PrintBluetoothThermal.connect(macPrinterAddress: deviceAddress);
+  }
+
+  @override
+  Future<bool> writeBytes(List<int> bytes) {
+    return PrintBluetoothThermal.writeBytes(bytes);
+  }
+
+  @override
+  Future<bool> disconnect() {
+    return PrintBluetoothThermal.disconnect;
+  }
+}
+
 class ThermalPrinterService {
+  ThermalPrinterService({BluetoothPrinterClient? bluetoothPrinterClient})
+    : _bluetoothPrinterClient =
+          bluetoothPrinterClient ?? PluginBluetoothPrinterClient();
+
+  final BluetoothPrinterClient _bluetoothPrinterClient;
+
   Future<void> printReceipt({
     required ReceiptPrintJob job,
     required PrinterTarget target,
@@ -73,10 +116,8 @@ class ThermalPrinterService {
     }
 
     if (target is BluetoothPrinterTarget) {
-      throw UnsupportedError(
-        'Bluetooth thermal printing requires platform plugin integration. '
-        'Configured device: ${target.deviceAddress}',
-      );
+      await _printViaBluetooth(target, bytes);
+      return;
     }
 
     throw UnsupportedError('Unknown printer target type: $target');
@@ -98,6 +139,41 @@ class ThermalPrinterService {
       await Future<void>.delayed(const Duration(milliseconds: 150));
     } finally {
       await socket.close();
+    }
+  }
+
+  Future<void> _printViaBluetooth(
+    BluetoothPrinterTarget target,
+    List<int> bytes,
+  ) async {
+    final hasPermission = await _bluetoothPrinterClient
+        .ensurePermissionGranted();
+    if (!hasPermission) {
+      throw StateError('Bluetooth permission is required to print receipt.');
+    }
+
+    final bluetoothEnabled = await _bluetoothPrinterClient
+        .ensureBluetoothEnabled();
+    if (!bluetoothEnabled) {
+      throw StateError('Bluetooth is disabled on this device.');
+    }
+
+    final isConnected = await _bluetoothPrinterClient.connect(
+      target.deviceAddress,
+    );
+    if (!isConnected) {
+      throw StateError(
+        'Unable to connect to bluetooth printer ${target.deviceAddress}.',
+      );
+    }
+
+    try {
+      final didWrite = await _bluetoothPrinterClient.writeBytes(bytes);
+      if (!didWrite) {
+        throw StateError('Failed to write receipt bytes to printer.');
+      }
+    } finally {
+      await _bluetoothPrinterClient.disconnect();
     }
   }
 }

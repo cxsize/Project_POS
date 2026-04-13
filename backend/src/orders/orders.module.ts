@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ProductsModule } from '../products/products.module';
 import { OrderItem } from './entities/order-item.entity';
@@ -15,7 +16,7 @@ import { OrdersService } from './orders.service';
     InventoryModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, RolesGuard],
   exports: [OrdersService],
 })
 export class OrdersModule {}

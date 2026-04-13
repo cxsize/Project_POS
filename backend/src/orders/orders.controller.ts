@@ -1,24 +1,24 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '../auth/entities/user.entity';
+import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { OrdersService } from './orders.service';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('orders')
 export class OrdersController {
   constructor(private ordersService: OrdersService) {}
@@ -59,19 +59,8 @@ export class OrdersController {
 
   @Post(':id/void')
   @ApiOperation({ summary: 'Void order and reverse stock deduction' })
-  voidOrder(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req()
-    req: {
-      user?: {
-        role?: string;
-      };
-    },
-  ) {
-    const role = req.user?.role;
-    if (role !== UserRole.ADMIN && role !== UserRole.MANAGER) {
-      throw new ForbiddenException('Only manager or admin can void orders');
-    }
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  voidOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.ordersService.voidOrder(id);
   }
 }

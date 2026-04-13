@@ -3,6 +3,40 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_frontend/services/thermal_printer_service.dart';
 
+class _FakeBluetoothPrinterClient implements BluetoothPrinterClient {
+  bool permissionGranted = true;
+  bool bluetoothEnabled = true;
+  bool connectResult = true;
+  bool writeResult = true;
+  bool disconnectCalled = false;
+  String? connectedAddress;
+  List<int>? writtenBytes;
+
+  @override
+  Future<bool> connect(String deviceAddress) async {
+    connectedAddress = deviceAddress;
+    return connectResult;
+  }
+
+  @override
+  Future<bool> disconnect() async {
+    disconnectCalled = true;
+    return true;
+  }
+
+  @override
+  Future<bool> ensureBluetoothEnabled() async => bluetoothEnabled;
+
+  @override
+  Future<bool> ensurePermissionGranted() async => permissionGranted;
+
+  @override
+  Future<bool> writeBytes(List<int> bytes) async {
+    writtenBytes = bytes;
+    return writeResult;
+  }
+}
+
 void main() {
   group('EscPosReceiptBuilder', () {
     test('builds receipt bytes with summary and QR payload', () {
@@ -46,13 +80,52 @@ void main() {
   });
 
   group('ThermalPrinterService', () {
-    test('throws for bluetooth target without plugin integration', () async {
-      final service = ThermalPrinterService();
+    test('prints via bluetooth plugin client', () async {
+      final fakeClient = _FakeBluetoothPrinterClient();
+      final service = ThermalPrinterService(
+        bluetoothPrinterClient: fakeClient,
+      );
+
+      await service.printReceipt(
+        job: ReceiptPrintJob(
+          orderNo: 'ORD-1',
+          createdAt: DateTime(2026, 4, 13),
+          staffLabel: 'cashier',
+          paymentMethod: 'cash',
+          items: [
+            ReceiptLineItem(
+              name: 'Tea',
+              qty: 1,
+              unitPrice: 35,
+              subtotal: 35,
+            ),
+          ],
+          subtotal: 35,
+          discount: 0,
+          vat: 2.45,
+          netTotal: 37.45,
+          amountReceived: 40,
+          change: 2.55,
+        ),
+        target: const BluetoothPrinterTarget(deviceAddress: 'AA:BB'),
+      );
+
+      expect(fakeClient.connectedAddress, 'AA:BB');
+      expect(fakeClient.writtenBytes, isNotNull);
+      expect(fakeClient.writtenBytes, isNotEmpty);
+      expect(fakeClient.disconnectCalled, isTrue);
+    });
+
+    test('throws when bluetooth permission is not granted', () async {
+      final fakeClient = _FakeBluetoothPrinterClient()..permissionGranted = false;
+      final service = ThermalPrinterService(
+        bluetoothPrinterClient: fakeClient,
+      );
 
       await expectLater(
         () => service.printReceipt(
           job: ReceiptPrintJob(
-            orderNo: 'ORD-1',
+            orderNo: 'ORD-2',
             createdAt: DateTime(2026, 4, 13),
             staffLabel: 'cashier',
             paymentMethod: 'cash',
@@ -66,7 +139,7 @@ void main() {
           ),
           target: const BluetoothPrinterTarget(deviceAddress: 'AA:BB'),
         ),
-        throwsA(isA<UnsupportedError>()),
+        throwsA(isA<StateError>()),
       );
     });
   });
