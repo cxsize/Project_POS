@@ -1,105 +1,127 @@
-Project Specification: Lean & Fast Modular POS
-Version: 1.0
-Stack: Flutter (Mobile), Node.js/NestJS (Backend), PostgreSQL & Isar (DB)
-Core Objective: High-speed retail checkout (500+ receipts/day) with Open API for CRM & Accounting.
-1. System Architecture & Tech Stack
- * Frontend: Flutter (iOS/Android) - Optimized for Tablets.
- * State Management: Riverpod or BLoC.
- * Local Database (Offline-First): Isar Database (NoSQL for Flutter).
- * Backend API: Node.js (NestJS) / TypeScript.
- * Cloud Database: PostgreSQL.
- * Caching/Queue: Redis (for Background Sync & Webhooks).
- * Communication:
-   * REST API (Client-Server)
-   * WebSockets (POS to Customer Facing Display)
-   * Webhooks (Server to External CRM/Accounting)
-2. Core Functional Modules (Decoupled)
-Module A: Core Checkout Engine
- * Fast Scan: Support Bluetooth/USB Barcode Scanners (HID Mode).
- * UI Performance: Sub-100ms response time for item selection.
- * Hardware: Integration with Thermal Printers (ESC/POS via Bluetooth/LAN/USB).
- * Offline Mode: Complete sale and print receipt without internet; Auto-sync when online.
-Module B: Customer Facing Display (CFD)
- * Real-time Sync: Show cart items to customers via local network (Websockets).
- * Dynamic QR: Generate PromptPay/Thai QR with exact amount from API.
- * Branding: Standby mode for promotional images/videos.
-Module C: Inventory & BOM (Bill of Materials)
- * Recipe Management: Link 1 Product to multiple Ingredients (e.g., 1 Cake = 200g Flour + 50g Butter).
- * Real-time Deduction: Deduct stock immediately upon sale sync.
-Module D: Open API Gateway (Integration)
- * CRM API: Member lookup by phone, point earning/redemption.
- * Accounting API: Push Full Receipt Details (Line-items) to external accounting software.
-3. Data Schema (Entity Relationship)
-3.1 Inventory & Products
-Table products {
-  id uuid [pk]
-  sku varchar [unique]
-  name varchar
-  base_price decimal
-  category_id uuid
-  is_active boolean
-}
+# Project POS
 
-Table ingredients {
-  id uuid [pk]
-  name varchar
-  unit varchar // grams, ml, pcs
-  stock_qty decimal
-  min_alert_qty decimal
-}
+Flutter POS frontend + NestJS backend for tablet-based checkout, order payment, and order history.
 
-Table recipes {
-  id uuid [pk]
-  product_id uuid
-  ingredient_id uuid
-  usage_qty decimal
-}
+## What Is Working
 
-3.2 Sales (Detailed for Accounting)
-Table orders {
-  id uuid [pk]
-  order_no varchar [unique]
-  branch_id uuid
-  staff_id uuid
-  total_amount decimal
-  discount_amount decimal
-  vat_amount decimal
-  net_amount decimal
-  payment_status enum // pending, paid, void
-  sync_status_acc boolean
-  created_at timestamp
-}
+- Login with JWT authentication
+- Cashier flow: browse products, search by SKU/name, add items to cart, create order, receive payment
+- Admin flow: open order history and inspect order details
+- Product catalog caching in local Isar database
+- Swagger API docs on the backend
+- Seed script for demo users, categories, products, ingredients, and recipes
 
-Table order_items {
-  id uuid [pk]
-  order_id uuid
-  product_id uuid
-  qty integer
-  unit_price decimal
-  subtotal decimal
-}
+## Repository Structure
 
-Table payments {
-  id uuid [pk]
-  order_id uuid
-  method enum // cash, qr, credit_card
-  amount_received decimal
-  ref_no varchar // External Transaction ID
-}
+- `frontend/` Flutter application
+- `backend/` NestJS API and database seed script
 
-4. API Endpoints (Open API Focus)
-CRM Integration
- * GET /api/v1/crm/member?phone={phone} -> Return member profile & points.
- * POST /api/v1/crm/points/earn -> Payload: {order_id, amount, customer_id}.
-Accounting Integration (Transaction Level)
- * POST /api/v1/accounting/sync-receipt -> Push detailed JSON of orders + order_items.
-5. Development Roadmap & Priorities
- * Sprint 1: Core POS UI + Isar Local DB + Offline Checkout.
- * Sprint 2: Printer/Scanner Integration + Local Background Sync to Cloud.
- * Sprint 3: Customer Facing Display (Websocket) + Dynamic QR.
- * Sprint 4: BOM/Inventory Logic + Webhooks for External Systems.
-6. Non-Functional Requirements
- * Security: JWT Authentication, API Key for Open API, Data Encryption at Rest.
- * Reliability: Data must not be lost if the app crashes (Atomic Transactions).
- * UX: Minimalist, high contrast, touch-friendly (Target: 0 learning curve for staff).
-End of Specification
+## Quick Start
+
+### 1. Start local services
+
+```bash
+cd backend
+docker compose up -d
+```
+
+This starts:
+
+- PostgreSQL on `localhost:5432`
+- Redis on `localhost:6379`
+
+### 2. Configure the backend
+
+```bash
+cd backend
+cp .env.example .env
+npm ci
+npm run seed
+npm run start:dev
+```
+
+Backend defaults:
+
+- API base URL: `http://localhost:3000/api/v1`
+- Swagger docs: `http://localhost:3000/api/docs`
+
+### 3. Configure and run the frontend
+
+The frontend already reads its API base URL from [`frontend/.env`](frontend/.env).
+
+```bash
+cd frontend
+flutter pub get
+flutter run
+```
+
+## Demo Accounts
+
+Seeded by `npm run seed`:
+
+- `admin` / `admin123`
+- `cashier1` / `cashier123`
+
+Role behavior in the current app:
+
+- `cashier` goes to the checkout screen after login
+- non-cashier users go to order history after login
+
+## How To Use The App
+
+### Cashier flow
+
+1. Login with `cashier1 / cashier123`
+2. Wait for the product catalog to load
+3. Add products by:
+   - tapping product tiles
+   - typing in the search box
+   - scanning a barcode/SKU and pressing Enter
+4. Review the cart on the right side
+5. Adjust quantity with the cart controls
+6. Press `Checkout`
+7. On the payment screen:
+   - choose `Cash`, `QR`, or `Card`
+   - confirm the amount received
+   - optionally enter a reference number for QR or card
+8. Press `Confirm Payment`
+9. If payment completes, the app shows change and resets for a new order
+
+### Admin flow
+
+1. Login with `admin / admin123`
+2. The app opens `Order History`
+3. Tap an order to see items, totals, VAT, and payment entries
+
+### Useful actions in the checkout screen
+
+- `Refresh Catalog` reloads categories and products from the backend
+- `Order History` opens the order list
+- `Logout` clears the session and returns to login
+
+## Notes For Developers
+
+- Backend API prefix is `/api/v1`
+- Frontend expects the backend on `http://localhost:3000/api/v1` unless `frontend/.env` is changed
+- The frontend caches products and saved orders in Isar
+- Current documentation is written against the code in this repository branch, not the broader Notion roadmap
+
+## Helpful Commands
+
+### Backend
+
+```bash
+cd backend
+npm run start:dev
+npm test -- --runInBand
+npm run build
+```
+
+### Frontend
+
+```bash
+cd frontend
+flutter analyze
+flutter test
+flutter run
+```
