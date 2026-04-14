@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CfdModule } from '../cfd/cfd.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ProductsModule } from '../products/products.module';
 import { QueueModule } from '../queue/queue.module';
@@ -12,6 +13,7 @@ import { OrdersService } from './orders.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, Payment]),
+    CfdModule,
     ProductsModule,
     InventoryModule,
     QueueModule,

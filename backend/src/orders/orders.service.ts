@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { CfdGatewayService } from '../cfd/cfd.gateway.service';
 import { DataSource, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductsService } from '../products/products.service';
@@ -16,6 +18,8 @@ import { Payment } from './entities/payment.entity';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectRepository(Order)
     private ordersRepository: Repository<Order>,
@@ -27,6 +31,7 @@ export class OrdersService {
     private productsService: ProductsService,
     private inventoryService: InventoryService,
     private orderSyncQueueService: OrderSyncQueueService,
+    private cfdGatewayService: CfdGatewayService,
   ) {}
 
   async create(dto: CreateOrderDto) {
@@ -44,7 +49,7 @@ export class OrdersService {
       }),
     );
 
-    return this.dataSource.transaction(async (manager) => {
+    const createdOrder = await this.dataSource.transaction(async (manager) => {
       const totalAmount = resolvedItems.reduce(
         (sum, item) => sum + item.subtotal,
         0,
@@ -74,6 +79,12 @@ export class OrdersService {
         relations: ['items'],
       });
     });
+
+    if (createdOrder) {
+      await this.publishCfdSnapshot(createdOrder.id);
+    }
+
+    return createdOrder;
   }
 
   findAll() {
@@ -137,6 +148,7 @@ export class OrdersService {
     }
 
     const updatedOrder = await this.findOne(order.id);
+    await this.publishCfdSnapshot(order.id);
     return { ...updatedOrder, change };
   }
 
@@ -145,5 +157,26 @@ export class OrdersService {
       where: { sync_status_acc: false, payment_status: PaymentStatus.PAID },
       relations: ['items', 'payments'],
     });
+  }
+
+  private async publishCfdSnapshot(orderId: string) {
+    const order = await this.ordersRepository.findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'payments'],
+    });
+
+    if (!order) {
+      return;
+    }
+
+    try {
+      this.cfdGatewayService.publishOrderSnapshot(order);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to publish CFD snapshot for order ${order.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 }

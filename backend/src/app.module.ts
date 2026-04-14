@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccountingModule } from './accounting/accounting.module';
 import { AuthModule } from './auth/auth.module';
+import { CfdModule } from './cfd/cfd.module';
 import { getDatabaseConfig } from './config/database.config';
 import { CrmModule } from './crm/crm.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -21,6 +22,7 @@ import { QueueModule } from './queue/queue.module';
     ProductsModule,
     InventoryModule,
     OrdersModule,
+    CfdModule,
     CrmModule,
     AccountingModule,
     QueueModule,
