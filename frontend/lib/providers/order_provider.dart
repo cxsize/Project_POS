@@ -51,6 +51,7 @@ class OrderNotifier extends StateNotifier<OrderState> {
           .read(orderServiceProvider)
           .addPayment(
             orderId: state.currentOrder!.id,
+            orderNo: state.currentOrder!.orderNo,
             method: method,
             amountReceived: amount,
             refNo: refNo,

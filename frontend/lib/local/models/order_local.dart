@@ -13,6 +13,9 @@ class OrderLocal {
   late String remoteId;
 
   @Index(unique: true, replace: true)
+  late String localReferenceId;
+
+  @Index(unique: true, replace: true)
   late String orderNo;
 
   late String branchId;
@@ -31,9 +34,16 @@ class OrderLocal {
   late DateTime createdAt;
   late DateTime syncedAt;
 
-  factory OrderLocal.fromDomain(Order order) {
+  factory OrderLocal.fromDomain(
+    Order order, {
+    String? remoteId,
+    String? localReferenceId,
+    bool? syncStatusAcc,
+    DateTime? syncedAt,
+  }) {
     return OrderLocal()
-      ..remoteId = order.id
+      ..remoteId = remoteId ?? order.id
+      ..localReferenceId = localReferenceId ?? order.id
       ..orderNo = order.orderNo
       ..branchId = order.branchId
       ..staffId = order.staffId
@@ -42,8 +52,8 @@ class OrderLocal {
       ..vatAmount = order.vatAmount
       ..netAmount = order.netAmount
       ..paymentStatus = order.paymentStatus
-      ..syncStatusAcc = order.paymentStatus == 'paid'
+      ..syncStatusAcc = syncStatusAcc ?? order.syncStatusAcc
       ..createdAt = order.createdAt
-      ..syncedAt = DateTime.now();
+      ..syncedAt = syncedAt ?? DateTime.now();
   }
 }

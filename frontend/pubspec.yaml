@@ -35,10 +35,14 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   google_fonts: ^6.2.1
   http: ^1.4.0
+  image: ^4.8.0
   isar: ^3.1.0+1
   isar_flutter_libs: ^3.1.0+1
   intl: ^0.20.2
+  connectivity_plus: ^6.1.5
   path_provider: ^2.1.5
+  esc_pos_utils_plus: ^2.0.4
+  print_bluetooth_thermal: ^1.1.9
 
 dev_dependencies:
   build_runner: ^2.4.13
@@ -55,3 +59,4 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/branding/pos-logo.png

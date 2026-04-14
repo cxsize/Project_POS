@@ -8,14 +8,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '../auth/entities/user.entity';
+import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { OrdersService } from './orders.service';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('orders')
 export class OrdersController {
   constructor(private ordersService: OrdersService) {}
@@ -52,5 +55,12 @@ export class OrdersController {
   ) {
     createPaymentDto.order_id = id;
     return this.ordersService.addPayment(createPaymentDto);
+  }
+
+  @Post(':id/void')
+  @ApiOperation({ summary: 'Void order and reverse stock deduction' })
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  voidOrder(@Param('id', ParseUUIDPipe) id: string) {
+    return this.ordersService.voidOrder(id);
   }
 }
