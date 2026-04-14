@@ -9,6 +9,7 @@ import 'package:pos_frontend/providers/service_providers.dart';
 import 'package:pos_frontend/services/api_client.dart';
 import 'package:pos_frontend/services/connectivity_service.dart';
 import 'package:pos_frontend/services/offline_sync_service.dart';
+import 'package:pos_frontend/services/order_service.dart';
 
 void main() {
   testWidgets('renders the login screen', (tester) async {
@@ -18,11 +19,15 @@ void main() {
           appBootstrapProvider.overrideWith((ref) async {}),
           authProvider.overrideWith((ref) => FakeAuthNotifier()),
           offlineSyncServiceProvider.overrideWith(
-            (ref) => OfflineSyncService(
-              ApiClient(baseUrl: 'http://localhost:3000/api/v1'),
-              LocalDatabaseService(),
-              ConnectivityService(),
-            ),
+            (ref) {
+              final connectivity = ConnectivityService();
+              final orderService = OrderService(
+                ApiClient(baseUrl: 'http://localhost:3000/api/v1'),
+                LocalDatabaseService(),
+                connectivityService: connectivity,
+              );
+              return OfflineSyncService(connectivity, orderService);
+            },
           ),
         ],
         child: const PosApp(),

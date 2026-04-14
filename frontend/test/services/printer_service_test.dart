@@ -130,6 +130,7 @@ final _order = Order(
   vatAmount: 5.95,
   netAmount: 90.95,
   paymentStatus: 'paid',
+  syncStatusAcc: false,
   createdAt: DateTime.utc(2026, 4, 12, 10, 30),
   items: [
     OrderItem(

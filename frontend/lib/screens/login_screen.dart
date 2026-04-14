@@ -37,7 +37,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final auth = ref.read(authProvider);
     if (auth.isAuthenticated) {
       await ref.read(productServiceProvider).warmupCatalog();
-      await ref.read(offlineSyncServiceProvider).start();
+      ref.read(offlineSyncServiceProvider).start();
       if (!mounted) {
         return;
       }

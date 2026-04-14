@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,11 +51,9 @@ class _AppBootstrapScreenState extends ConsumerState<AppBootstrapScreen> {
     return bootstrap.when(
       data: (_) {
         if (!auth.isAuthenticated) {
-          unawaited(ref.read(offlineSyncServiceProvider).stop());
           return const LoginScreen();
         }
 
-        unawaited(ref.read(offlineSyncServiceProvider).start());
         if (auth.user?.role == 'cashier') {
           return const CheckoutScreen();
         }

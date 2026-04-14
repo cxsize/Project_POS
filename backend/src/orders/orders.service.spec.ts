@@ -137,6 +137,10 @@ describe('OrdersService', () => {
 
   it('rejects when client totals do not match server-calculated totals', async () => {
     productsService.findOne.mockResolvedValue({ base_price: 100 });
+    dataSource.transaction.mockImplementation(
+      async (callback: (manager: unknown) => Promise<unknown>) =>
+        callback({}),
+    );
 
     await expect(
       service.create({
