@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductsService } from '../products/products.service';
+import { OrderSyncQueueService } from '../queue/order-sync-queue.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { OrderItem } from './entities/order-item.entity';
@@ -25,6 +26,7 @@ export class OrdersService {
     private dataSource: DataSource,
     private productsService: ProductsService,
     private inventoryService: InventoryService,
+    private orderSyncQueueService: OrderSyncQueueService,
   ) {}
 
   async create(dto: CreateOrderDto) {
@@ -130,6 +132,8 @@ export class OrdersService {
       for (const item of order.items) {
         await this.inventoryService.deductStock(item.product_id, item.qty);
       }
+
+      await this.orderSyncQueueService.enqueuePaidOrderSync(order.id);
     }
 
     const updatedOrder = await this.findOne(order.id);

@@ -1,5 +1,6 @@
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
 
 import '../models/category.dart';
 import '../models/order.dart';
@@ -11,6 +12,10 @@ import 'models/product_local.dart';
 import 'models/sync_queue_local.dart';
 
 class LocalDatabaseService {
+  static const pendingSyncStatus = 'pending';
+  static const failedSyncStatus = 'failed';
+  static const completedSyncStatus = 'completed';
+
   LocalDatabaseService();
 
   Isar? _isar;
@@ -132,6 +137,107 @@ class LocalDatabaseService {
       if (paymentLocals.isNotEmpty) {
         await isar.paymentLocals.putAll(paymentLocals);
       }
+    });
+  }
+
+  Future<void> replaceOfflineOrderSnapshot(
+    String localOrderId,
+    Order syncedOrder,
+  ) async {
+    final isar = await open();
+
+    await isar.writeTxn(() async {
+      await isar.orderLocals.filter().remoteIdEqualTo(localOrderId).deleteAll();
+      await isar.orderItemLocals
+          .filter()
+          .orderIdEqualTo(localOrderId)
+          .deleteAll();
+      await isar.paymentLocals
+          .filter()
+          .orderIdEqualTo(localOrderId)
+          .deleteAll();
+    });
+
+    await saveOrderSnapshot(syncedOrder);
+  }
+
+  Future<void> enqueueSyncAction({
+    required String queueKey,
+    required String entityType,
+    required String action,
+    required Map<String, dynamic> payload,
+    String? localReferenceId,
+  }) async {
+    final isar = await open();
+    final now = DateTime.now();
+    final record = SyncQueueLocal()
+      ..queueKey = queueKey
+      ..entityType = entityType
+      ..action = action
+      ..localReferenceId = localReferenceId
+      ..payloadJson = jsonEncode(payload)
+      ..status = pendingSyncStatus
+      ..retryCount = 0
+      ..createdAt = now
+      ..updatedAt = now;
+
+    await isar.writeTxn(() async {
+      await isar.syncQueueLocals.put(record);
+    });
+  }
+
+  Future<List<SyncQueueLocal>> getPendingSyncQueue({int limit = 20}) async {
+    final isar = await open();
+    final pending = await isar.syncQueueLocals
+        .filter()
+        .group(
+          (query) => query
+              .statusEqualTo(pendingSyncStatus)
+              .or()
+              .statusEqualTo(failedSyncStatus),
+        )
+        .sortByCreatedAt()
+        .findAll();
+
+    if (pending.length <= limit) {
+      return pending;
+    }
+
+    return pending.take(limit).toList();
+  }
+
+  Future<void> markSyncQueueCompleted(String queueKey) async {
+    final isar = await open();
+    final record = await isar.syncQueueLocals
+        .filter()
+        .queueKeyEqualTo(queueKey)
+        .findFirst();
+    if (record == null) {
+      return;
+    }
+
+    await isar.writeTxn(() async {
+      record.status = completedSyncStatus;
+      record.updatedAt = DateTime.now();
+      await isar.syncQueueLocals.put(record);
+    });
+  }
+
+  Future<void> markSyncQueueFailed(String queueKey) async {
+    final isar = await open();
+    final record = await isar.syncQueueLocals
+        .filter()
+        .queueKeyEqualTo(queueKey)
+        .findFirst();
+    if (record == null) {
+      return;
+    }
+
+    await isar.writeTxn(() async {
+      record.status = failedSyncStatus;
+      record.retryCount += 1;
+      record.updatedAt = DateTime.now();
+      await isar.syncQueueLocals.put(record);
     });
   }
 }
