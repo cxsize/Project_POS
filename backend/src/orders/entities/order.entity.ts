@@ -1,7 +1,10 @@
+import { Branch } from '../../branches/entities/branch.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -24,6 +27,10 @@ export class Order {
 
   @Column('uuid')
   branch_id: string;
+
+  @ManyToOne(() => Branch, (branch) => branch.orders)
+  @JoinColumn({ name: 'branch_id' })
+  branch: Branch;
 
   @Column('uuid')
   staff_id: string;

@@ -9,18 +9,9 @@ import 'package:pos_frontend/providers/product_provider.dart';
 import 'package:pos_frontend/screens/checkout_screen.dart';
 
 void main() {
-  testWidgets('tapping a product tile adds it to the cart', (tester) async {
-    final binding = TestWidgetsFlutterBinding.ensureInitialized();
-    binding.platformDispatcher.views.first.physicalSize = const Size(
-      1400,
-      1000,
-    );
-    binding.platformDispatcher.views.first.devicePixelRatio = 1.0;
-    addTearDown(() {
-      binding.platformDispatcher.views.first.resetPhysicalSize();
-      binding.platformDispatcher.views.first.resetDevicePixelRatio();
-    });
+  _configureDesktopViewport();
 
+  testWidgets('tapping a product tile adds it to the cart', (tester) async {
     final category = Category(id: 'cat-1', name: 'Beverages');
     final product = Product(
       id: 'prod-1',
@@ -51,6 +42,52 @@ void main() {
 
     expect(find.text('1 items'), findsOneWidget);
     expect(find.text('Checkout'), findsOneWidget);
+  });
+
+  testWidgets('keeps HID keyboard listener focused after cart interaction', (
+    tester,
+  ) async {
+    final category = Category(id: 'cat-1', name: 'Beverages');
+    final product = Product(
+      id: 'prod-1',
+      sku: 'LATTE-001',
+      name: 'Iced Latte',
+      basePrice: 85,
+      categoryId: category.id,
+      category: category,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authProvider.overrideWith((ref) => FakeAuthNotifier()),
+          categoriesProvider.overrideWith((ref) async => [category]),
+          filteredProductsProvider.overrideWith((ref) async => [product]),
+        ],
+        child: const MaterialApp(home: CheckoutScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    KeyboardListener keyboardListener() =>
+        tester.widget<KeyboardListener>(find.byType(KeyboardListener));
+
+    expect(keyboardListener().focusNode.hasFocus, isTrue);
+
+    await tester.tap(find.text('Iced Latte').first);
+    await tester.pumpAndSettle();
+
+    expect(keyboardListener().focusNode.hasFocus, isTrue);
+  });
+}
+
+void _configureDesktopViewport() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  binding.platformDispatcher.views.first.physicalSize = const Size(1400, 1000);
+  binding.platformDispatcher.views.first.devicePixelRatio = 1.0;
+  tearDownAll(() {
+    binding.platformDispatcher.views.first.resetPhysicalSize();
+    binding.platformDispatcher.views.first.resetDevicePixelRatio();
   });
 }
 

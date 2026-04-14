@@ -1,7 +1,10 @@
+import { Branch } from '../../branches/entities/branch.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
@@ -30,6 +33,13 @@ export class User {
 
   @Column('uuid', { nullable: true })
   branch_id: string;
+
+  @ManyToOne(() => Branch, (branch) => branch.users, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'branch_id' })
+  branch: Branch | null;
 
   @Column({ default: true })
   is_active: boolean;

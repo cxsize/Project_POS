@@ -1,135 +1,134 @@
 import 'dart:async';
-import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_frontend/local/local_database_service.dart';
-import 'package:pos_frontend/local/models/sync_queue_local.dart';
-import 'package:pos_frontend/models/order.dart';
 import 'package:pos_frontend/services/api_client.dart';
 import 'package:pos_frontend/services/connectivity_service.dart';
 import 'package:pos_frontend/services/offline_sync_service.dart';
+import 'package:pos_frontend/services/order_service.dart';
 
 void main() {
-  group('OfflineSyncService', () {
-    test(
-      'flushPendingQueue syncs queued orders and marks them completed',
-      () async {
-        final apiClient = FakeSyncApiClient(
-          responseByPath: {
-            '/orders': {
-              'id': 'remote-order-1',
-              'order_no': 'ORD-001',
-              'branch_id': 'branch-1',
-              'staff_id': 'staff-1',
-              'total_amount': 100,
-              'discount_amount': 0,
-              'vat_amount': 7,
-              'net_amount': 107,
-              'payment_status': 'pending',
-              'sync_status_acc': false,
-              'created_at': '2026-04-13T09:00:00.000Z',
-              'items': const [],
-              'payments': const [],
-            },
-          },
-        );
-        final localDatabase = FakeSyncLocalDatabaseService(
-          queue: [
-            SyncQueueLocal()
-              ..queueKey = 'order-create-local-1'
-              ..entityType = 'order'
-              ..action = 'create-order'
-              ..localReferenceId = 'local-1'
-              ..payloadJson = jsonEncode({
-                'branch_id': 'branch-1',
-                'staff_id': 'staff-1',
-                'items': [
-                  {'product_id': 'prod-1', 'qty': 1},
-                ],
-              })
-              ..status = LocalDatabaseService.pendingSyncStatus
-              ..retryCount = 0
-              ..createdAt = DateTime(2026, 4, 13, 9)
-              ..updatedAt = DateTime(2026, 4, 13, 9),
-          ],
-        );
-        final connectivity = FakeStreamConnectivityService(initialOnline: true);
-        final service = OfflineSyncService(
-          apiClient,
-          localDatabase,
-          connectivity,
-        );
+  test('starts syncing immediately and when connectivity returns', () async {
+    final connectivityService = StreamConnectivityService(isOnline: false);
+    final orderService = TrackingOrderService(connectivityService);
+    final offlineSyncService = OfflineSyncService(
+      connectivityService,
+      orderService,
+      pollInterval: const Duration(minutes: 5),
+    );
 
-        await service.flushPendingQueue();
+    offlineSyncService.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(orderService.syncCalls, 0);
 
-        expect(apiClient.requestedPaths, ['/orders']);
-        expect(localDatabase.completedQueueKeys, ['order-create-local-1']);
-        expect(localDatabase.replacedSnapshots.single.$1, 'local-1');
-        expect(localDatabase.replacedSnapshots.single.$2.id, 'remote-order-1');
+    connectivityService.setOnline(true);
+    connectivityService.emit(const [ConnectivityResult.wifi]);
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(orderService.syncCalls, 1);
+
+    await offlineSyncService.stop();
+  });
+
+  test('polls sync queue periodically while online', () async {
+    final connectivityService = StreamConnectivityService(isOnline: true);
+    final orderService = TrackingOrderService(connectivityService);
+    final offlineSyncService = OfflineSyncService(
+      connectivityService,
+      orderService,
+      pollInterval: const Duration(milliseconds: 20),
+    );
+
+    offlineSyncService.start();
+    await Future<void>.delayed(const Duration(milliseconds: 75));
+
+    expect(orderService.syncCalls, greaterThanOrEqualTo(2));
+    await offlineSyncService.stop();
+  });
+
+  test('retries with exponential backoff after sync errors', () async {
+    final connectivityService = StreamConnectivityService(isOnline: true);
+    var callCount = 0;
+    final orderService = TrackingOrderService(
+      connectivityService,
+      behavior: () async {
+        callCount += 1;
+        if (callCount < 3) {
+          throw StateError('temporary sync failure');
+        }
       },
     );
+    final offlineSyncService = OfflineSyncService(
+      connectivityService,
+      orderService,
+      pollInterval: const Duration(minutes: 5),
+      initialRetryDelay: const Duration(milliseconds: 10),
+      maxRetryDelay: const Duration(milliseconds: 40),
+    );
+
+    final stopwatch = Stopwatch()..start();
+    offlineSyncService.start();
+
+    while (orderService.syncCalls < 3 && stopwatch.elapsedMilliseconds < 200) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    expect(orderService.syncCalls, 3);
+    expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(25));
+    await offlineSyncService.stop();
   });
 }
 
-class FakeSyncApiClient extends ApiClient {
-  FakeSyncApiClient({required Map<String, dynamic> responseByPath})
-    : _responseByPath = responseByPath,
-      super(baseUrl: 'http://fake.local/api/v1');
+class StreamConnectivityService extends ConnectivityService {
+  StreamConnectivityService({required bool isOnline}) : _isOnline = isOnline;
 
-  final Map<String, dynamic> _responseByPath;
-  final List<String> requestedPaths = [];
+  final StreamController<List<ConnectivityResult>> _controller =
+      StreamController<List<ConnectivityResult>>.broadcast();
+  bool _isOnline;
+
+  void setOnline(bool isOnline) {
+    _isOnline = isOnline;
+  }
+
+  void emit(List<ConnectivityResult> results) {
+    _controller.add(results);
+  }
 
   @override
-  Future<dynamic> post(
-    String path, {
-    Map<String, dynamic>? body,
-    bool retryOnUnauthorized = true,
-  }) async {
-    requestedPaths.add(path);
-    return _responseByPath[path];
+  Stream<List<ConnectivityResult>> get onConnectivityChanged =>
+      _controller.stream;
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async {
+    return [_isOnline ? ConnectivityResult.wifi : ConnectivityResult.none];
   }
 }
 
-class FakeStreamConnectivityService extends ConnectivityService {
-  FakeStreamConnectivityService({required bool initialOnline})
-    : _isOnline = initialOnline;
+class TrackingOrderService extends OrderService {
+  TrackingOrderService(
+    ConnectivityService connectivityService, {
+    Future<void> Function()? behavior,
+  }) : _behavior = behavior,
+       super(
+         _NoopApiClient(),
+         LocalDatabaseService(),
+         connectivityService: connectivityService,
+       );
 
-  final _controller = StreamController<bool>.broadcast();
-  final bool _isOnline;
+  final Future<void> Function()? _behavior;
+  int syncCalls = 0;
 
   @override
-  Future<bool> isOnline() async => _isOnline;
-
-  @override
-  Stream<bool> get onStatusChanged => _controller.stream;
-
-  Future<void> dispose() async {
-    await _controller.close();
+  Future<void> syncPendingQueue() async {
+    syncCalls += 1;
+    if (_behavior != null) {
+      await _behavior();
+    }
   }
 }
 
-class FakeSyncLocalDatabaseService extends LocalDatabaseService {
-  FakeSyncLocalDatabaseService({required this.queue});
-
-  final List<SyncQueueLocal> queue;
-  final List<String> completedQueueKeys = [];
-  final List<(String, Order)> replacedSnapshots = [];
-
-  @override
-  Future<List<SyncQueueLocal>> getPendingSyncQueue({int limit = 20}) async {
-    return queue.take(limit).toList();
-  }
-
-  @override
-  Future<void> markSyncQueueCompleted(String queueKey) async {
-    completedQueueKeys.add(queueKey);
-  }
-
-  @override
-  Future<void> replaceOfflineOrderSnapshot(
-    String localOrderId,
-    Order syncedOrder,
-  ) async {
-    replacedSnapshots.add((localOrderId, syncedOrder));
-  }
+class _NoopApiClient extends ApiClient {
+  _NoopApiClient() : super(baseUrl: 'http://fake.local/api/v1');
 }

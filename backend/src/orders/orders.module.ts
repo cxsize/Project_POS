@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CfdModule } from '../cfd/cfd.module';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ProductsModule } from '../products/products.module';
 import { QueueModule } from '../queue/queue.module';
@@ -19,7 +20,7 @@ import { OrdersService } from './orders.service';
     QueueModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, RolesGuard],
   exports: [OrdersService],
 })
 export class OrdersModule {}

@@ -10,13 +10,45 @@ import 'checkout_screen.dart';
 import 'login_screen.dart';
 import 'order_history_screen.dart';
 
-class AppBootstrapScreen extends ConsumerWidget {
+class AppBootstrapScreen extends ConsumerStatefulWidget {
   const AppBootstrapScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppBootstrapScreen> createState() => _AppBootstrapScreenState();
+}
+
+class _AppBootstrapScreenState extends ConsumerState<AppBootstrapScreen> {
+  bool _syncStarted = false;
+
+  @override
+  void dispose() {
+    if (_syncStarted) {
+      ref.read(offlineSyncServiceProvider).stop();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = this.ref;
     final bootstrap = ref.watch(appBootstrapProvider);
     final auth = ref.watch(authProvider);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      if (auth.isAuthenticated) {
+        final offlineSyncService = ref.read(offlineSyncServiceProvider);
+        offlineSyncService.start();
+        _syncStarted = true;
+      } else if (_syncStarted) {
+        final offlineSyncService = ref.read(offlineSyncServiceProvider);
+        offlineSyncService.stop();
+        _syncStarted = false;
+      }
+    });
 
     return bootstrap.when(
       data: (_) {

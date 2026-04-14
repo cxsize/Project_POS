@@ -20,13 +20,18 @@ class PaymentLocal {
   String? refNo;
   late DateTime syncedAt;
 
-  factory PaymentLocal.fromDomain(String orderIdValue, Payment payment) {
+  factory PaymentLocal.fromDomain(
+    String orderIdValue,
+    Payment payment, {
+    String? remoteId,
+    DateTime? syncedAt,
+  }) {
     return PaymentLocal()
-      ..remoteId = payment.id
+      ..remoteId = remoteId ?? payment.id
       ..orderId = orderIdValue
       ..method = payment.method
       ..amountReceived = payment.amountReceived
       ..refNo = payment.refNo
-      ..syncedAt = DateTime.now();
+      ..syncedAt = syncedAt ?? DateTime.now();
   }
 }

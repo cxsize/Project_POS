@@ -1,105 +1,120 @@
 import 'dart:async';
-import 'dart:convert';
 
-import '../local/local_database_service.dart';
-import '../local/models/sync_queue_local.dart';
-import '../models/order.dart';
-import 'api_client.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 import 'connectivity_service.dart';
+import 'order_service.dart';
 
 class OfflineSyncService {
-  OfflineSyncService(this._client, this._localDatabase, this._connectivity);
+  OfflineSyncService(
+    this._connectivityService,
+    this._orderService, {
+    Duration pollInterval = const Duration(seconds: 30),
+    Duration initialRetryDelay = const Duration(seconds: 2),
+    Duration maxRetryDelay = const Duration(minutes: 1),
+  }) : _pollInterval = pollInterval,
+       _initialRetryDelay = initialRetryDelay,
+       _maxRetryDelay = maxRetryDelay,
+       _retryDelay = initialRetryDelay;
 
-  final ApiClient _client;
-  final LocalDatabaseService _localDatabase;
-  final ConnectivityService _connectivity;
+  final ConnectivityService _connectivityService;
+  final OrderService _orderService;
+  final Duration _pollInterval;
+  final Duration _initialRetryDelay;
+  final Duration _maxRetryDelay;
 
-  StreamSubscription<bool>? _statusSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _subscription;
+  Timer? _pollTimer;
+  Timer? _retryTimer;
   bool _started = false;
-  bool _syncing = false;
+  bool _isSyncing = false;
+  Duration _retryDelay;
 
-  Future<void> start() async {
+  void start() {
     if (_started) {
       return;
     }
-
     _started = true;
-    _statusSubscription = _connectivity.onStatusChanged.listen((isOnline) {
-      if (isOnline) {
-        unawaited(flushPendingQueue());
+    _resetRetryDelay();
+    _startPolling();
+    unawaited(syncNowIfOnline());
+    _subscription = _connectivityService.onConnectivityChanged.listen((
+      results,
+    ) {
+      if (_connectivityService.hasOnlineConnection(results)) {
+        _cancelRetryTimer();
+        _resetRetryDelay();
+        unawaited(syncNowIfOnline());
       }
     });
-
-    if (await _connectivity.isOnline()) {
-      await flushPendingQueue();
-    }
   }
 
   Future<void> stop() async {
     _started = false;
-    await _statusSubscription?.cancel();
-    _statusSubscription = null;
+    await _subscription?.cancel();
+    _subscription = null;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _cancelRetryTimer();
   }
 
-  Future<void> flushPendingQueue() async {
-    if (_syncing || !await _connectivity.isOnline()) {
+  Future<void> syncNowIfOnline() async {
+    if (_isSyncing || !await _connectivityService.isOnline) {
       return;
     }
 
-    _syncing = true;
+    _isSyncing = true;
     try {
-      final queue = await _localDatabase.getPendingSyncQueue();
-      for (final item in queue) {
-        if (!_isReadyToRetry(item)) {
-          continue;
-        }
-
-        try {
-          await _processQueueItem(item);
-          await _localDatabase.markSyncQueueCompleted(item.queueKey);
-        } catch (_) {
-          await _localDatabase.markSyncQueueFailed(item.queueKey);
-        }
-      }
+      await _orderService.syncPendingQueue();
+      _cancelRetryTimer();
+      _resetRetryDelay();
+    } catch (_) {
+      _scheduleRetry();
     } finally {
-      _syncing = false;
+      _isSyncing = false;
     }
   }
 
-  bool _isReadyToRetry(SyncQueueLocal item) {
-    if (item.status == LocalDatabaseService.pendingSyncStatus) {
-      return true;
-    }
-
-    final waitSeconds = 1 << item.retryCount.clamp(0, 6);
-    final readyAt = item.updatedAt.add(Duration(seconds: waitSeconds));
-    return !readyAt.isAfter(DateTime.now());
-  }
-
-  Future<void> _processQueueItem(SyncQueueLocal item) async {
-    switch (item.action) {
-      case 'create-order':
-        await _syncOrderCreate(item);
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      if (!_started) {
         return;
-      default:
-        throw UnsupportedError('Unsupported sync action: ${item.action}');
-    }
+      }
+      unawaited(syncNowIfOnline());
+    });
   }
 
-  Future<void> _syncOrderCreate(SyncQueueLocal item) async {
-    final payload = jsonDecode(item.payloadJson) as Map<String, dynamic>;
-    final response =
-        await _client.post('/orders', body: payload) as Map<String, dynamic>;
-    final order = Order.fromJson(response);
-
-    if (item.localReferenceId != null && item.localReferenceId!.isNotEmpty) {
-      await _localDatabase.replaceOfflineOrderSnapshot(
-        item.localReferenceId!,
-        order,
-      );
+  void _scheduleRetry() {
+    if (_retryTimer != null || !_started) {
       return;
     }
 
-    await _localDatabase.saveOrderSnapshot(order);
+    final delay = _retryDelay;
+    _retryDelay = _nextRetryDelay(_retryDelay);
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      if (!_started) {
+        return;
+      }
+      unawaited(syncNowIfOnline());
+    });
+  }
+
+  Duration _nextRetryDelay(Duration current) {
+    final doubledMs = current.inMilliseconds * 2;
+    if (doubledMs >= _maxRetryDelay.inMilliseconds) {
+      return _maxRetryDelay;
+    }
+    return Duration(milliseconds: doubledMs);
+  }
+
+  void _cancelRetryTimer() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+  }
+
+  void _resetRetryDelay() {
+    _retryDelay = _initialRetryDelay;
   }
 }

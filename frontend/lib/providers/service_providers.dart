@@ -7,6 +7,7 @@ import '../services/connectivity_service.dart';
 import '../services/offline_sync_service.dart';
 import '../services/order_service.dart';
 import '../services/product_service.dart';
+import '../services/thermal_printer_service.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 final localDatabaseServiceProvider = Provider<LocalDatabaseService>(
@@ -34,14 +35,21 @@ final orderServiceProvider = Provider<OrderService>(
   (ref) => OrderService(
     ref.read(apiClientProvider),
     ref.read(localDatabaseServiceProvider),
-    ref.read(connectivityServiceProvider),
+    connectivityService: ref.read(connectivityServiceProvider),
   ),
 );
 
-final offlineSyncServiceProvider = Provider<OfflineSyncService>(
-  (ref) => OfflineSyncService(
-    ref.read(apiClientProvider),
-    ref.read(localDatabaseServiceProvider),
+final offlineSyncServiceProvider = Provider<OfflineSyncService>((ref) {
+  final service = OfflineSyncService(
     ref.read(connectivityServiceProvider),
-  ),
+    ref.read(orderServiceProvider),
+  );
+  ref.onDispose(() {
+    service.stop();
+  });
+  return service;
+});
+
+final thermalPrinterServiceProvider = Provider<ThermalPrinterService>(
+  (ref) => ThermalPrinterService(),
 );
