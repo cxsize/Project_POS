@@ -17,6 +17,7 @@ import '../widgets/product_tile.dart';
 import 'login_screen.dart';
 import 'order_history_screen.dart';
 import 'payment_screen.dart';
+import 'settings_screen.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
@@ -27,9 +28,10 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   late final TextEditingController _searchController;
-  late final FocusNode _hidFocusNode;
-  final StringBuffer _hidScanBuffer = StringBuffer();
-  Timer? _hidScanDebounce;
+  late final FocusNode _scannerFocusNode;
+  String _scannerBuffer = '';
+  DateTime? _lastScannerKeyAt;
+  static const _scannerCharacterGap = Duration(milliseconds: 90);
 
   @override
   void initState() {
@@ -37,17 +39,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _searchController = TextEditingController(
       text: ref.read(productSearchQueryProvider),
     );
-    _hidFocusNode = FocusNode(debugLabel: 'checkout_hid_listener');
+    _scannerFocusNode = FocusNode(debugLabel: 'checkout-scanner-focus');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestHidFocus();
+      if (mounted) {
+        _scannerFocusNode.requestFocus();
+      }
     });
   }
 
   @override
   void dispose() {
-    _hidScanDebounce?.cancel();
-    _hidFocusNode.dispose();
     _searchController.dispose();
+    _scannerFocusNode.dispose();
     super.dispose();
   }
 
@@ -60,7 +63,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Future<void> _handleBarcodeSubmit(String rawValue) async {
     final barcode = rawValue.trim();
     if (barcode.isEmpty) {
-      _requestHidFocus();
       return;
     }
 
@@ -73,19 +75,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     if (product != null) {
       ref.read(cartProvider.notifier).addItem(product);
-      _searchController.clear();
-      ref.read(productSearchQueryProvider.notifier).state = '';
+      _setSearchQuery('');
+      _resetScannerBuffer();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Added ${product.name} to cart'),
           duration: const Duration(milliseconds: 900),
         ),
       );
-      _requestHidFocus();
       return;
     }
 
-    ref.read(productSearchQueryProvider.notifier).state = barcode;
+    _setSearchQuery(barcode);
+    _resetScannerBuffer();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -93,57 +95,75 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         ),
       ),
     );
-    _requestHidFocus();
   }
 
-  void _requestHidFocus() {
-    if (!mounted || _hidFocusNode.hasFocus) {
-      return;
+  void _setSearchQuery(String value) {
+    if (_searchController.text != value) {
+      _searchController.value = TextEditingValue(
+        text: value,
+        selection: TextSelection.collapsed(offset: value.length),
+      );
     }
-    FocusScope.of(context).requestFocus(_hidFocusNode);
+    ref.read(productSearchQueryProvider.notifier).state = value;
   }
 
-  void _handleHidKeyEvent(KeyEvent event) {
+  void _resetScannerBuffer() {
+    _scannerBuffer = '';
+    _lastScannerKeyAt = null;
+  }
+
+  KeyEventResult _handleScannerKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) {
-      return;
+      return KeyEventResult.ignored;
     }
 
-    if (HardwareKeyboard.instance.isAltPressed ||
-        HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed) {
-      return;
-    }
-
-    final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter) {
-      final rawScan = _hidScanBuffer.toString();
-      _hidScanBuffer.clear();
-      _hidScanDebounce?.cancel();
-      unawaited(_handleBarcodeSubmit(rawScan));
-      return;
-    }
-
-    if (key == LogicalKeyboardKey.backspace) {
-      final existing = _hidScanBuffer.toString();
-      if (existing.isNotEmpty) {
-        _hidScanBuffer
-          ..clear()
-          ..write(existing.substring(0, existing.length - 1));
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      final barcode = _scannerBuffer.trim();
+      if (barcode.isEmpty) {
+        return KeyEventResult.ignored;
       }
-      return;
+
+      _resetScannerBuffer();
+      unawaited(_handleBarcodeSubmit(barcode));
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      _setSearchQuery('');
+      _resetScannerBuffer();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      if (_scannerBuffer.isEmpty) {
+        return KeyEventResult.ignored;
+      }
+
+      _scannerBuffer = _scannerBuffer.substring(0, _scannerBuffer.length - 1);
+      _lastScannerKeyAt = DateTime.now();
+      _setSearchQuery(_scannerBuffer);
+      return KeyEventResult.handled;
     }
 
     final character = event.character;
-    if (character == null || character.isEmpty) {
-      return;
+    if (character == null ||
+        character.isEmpty ||
+        character.trim().isEmpty ||
+        character.length != 1) {
+      return KeyEventResult.ignored;
     }
 
-    _hidScanBuffer.write(character);
-    _hidScanDebounce?.cancel();
-    _hidScanDebounce = Timer(const Duration(milliseconds: 500), () {
-      _hidScanBuffer.clear();
-    });
+    final now = DateTime.now();
+    if (_lastScannerKeyAt == null ||
+        now.difference(_lastScannerKeyAt!) > _scannerCharacterGap) {
+      _scannerBuffer = '';
+    }
+
+    _lastScannerKeyAt = now;
+    _scannerBuffer += character;
+    _setSearchQuery(_scannerBuffer);
+    return KeyEventResult.handled;
   }
 
   Future<void> _logout() async {
@@ -168,127 +188,102 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final cartNet = ref.watch(cartNetProvider);
     final orderState = ref.watch(orderProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('POS - ${auth.user?.username ?? ""}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync),
-            tooltip: 'Refresh Catalog',
-            onPressed: _refreshCatalog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Order History',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const OrderHistoryScreen()),
+    return Focus(
+      focusNode: _scannerFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleScannerKey,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('POS - ${auth.user?.username ?? ""}'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.sync),
+              tooltip: 'Refresh Catalog',
+              onPressed: _refreshCatalog,
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: _logout,
-          ),
-        ],
-      ),
-      body: KeyboardListener(
-        focusNode: _hidFocusNode,
-        autofocus: true,
-        onKeyEvent: _handleHidKeyEvent,
-        child: Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _requestHidFocus();
-            });
-          },
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 960;
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Order History',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const OrderHistoryScreen()),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.print),
+              tooltip: 'Printer Settings',
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+              onPressed: _logout,
+            ),
+          ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 960;
 
-              if (isCompact) {
-                return Column(
-                  children: [
-                    Expanded(child: _buildCatalogPanel(context)),
-                    Container(height: 1, color: Theme.of(context).dividerColor),
-                    SizedBox(
-                      height: 360,
-                      child: _CartPanel(
-                        cart: cart,
-                        cartTotal: cartTotal,
-                        cartVat: cartVat,
-                        cartNet: cartNet,
-                        isSubmitting: orderState.isLoading,
-                        onClear: () {
-                          ref.read(cartProvider.notifier).clear();
-                          _requestHidFocus();
-                        },
-                        onCheckout: () => _checkout(cart),
-                        onIncrement: (item) {
-                          ref
-                              .read(cartProvider.notifier)
-                              .incrementQty(item.product.id);
-                          _requestHidFocus();
-                        },
-                        onDecrement: (item) {
-                          ref
-                              .read(cartProvider.notifier)
-                              .decrementQty(item.product.id);
-                          _requestHidFocus();
-                        },
-                        onRemove: (item) {
-                          ref
-                              .read(cartProvider.notifier)
-                              .removeItem(item.product.id);
-                          _requestHidFocus();
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              return Row(
+            if (isCompact) {
+              return Column(
                 children: [
-                  Expanded(flex: 65, child: _buildCatalogPanel(context)),
-                  Container(width: 1, color: Theme.of(context).dividerColor),
-                  Expanded(
-                    flex: 35,
+                  Expanded(child: _buildCatalogPanel(context)),
+                  Container(height: 1, color: Theme.of(context).dividerColor),
+                  SizedBox(
+                    height: 360,
                     child: _CartPanel(
                       cart: cart,
                       cartTotal: cartTotal,
                       cartVat: cartVat,
                       cartNet: cartNet,
                       isSubmitting: orderState.isLoading,
-                      onClear: () {
-                        ref.read(cartProvider.notifier).clear();
-                        _requestHidFocus();
-                      },
+                      onClear: () => ref.read(cartProvider.notifier).clear(),
                       onCheckout: () => _checkout(cart),
-                      onIncrement: (item) {
-                        ref
-                            .read(cartProvider.notifier)
-                            .incrementQty(item.product.id);
-                        _requestHidFocus();
-                      },
-                      onDecrement: (item) {
-                        ref
-                            .read(cartProvider.notifier)
-                            .decrementQty(item.product.id);
-                        _requestHidFocus();
-                      },
-                      onRemove: (item) {
-                        ref
-                            .read(cartProvider.notifier)
-                            .removeItem(item.product.id);
-                        _requestHidFocus();
-                      },
+                      onIncrement: (item) => ref
+                          .read(cartProvider.notifier)
+                          .incrementQty(item.product.id),
+                      onDecrement: (item) => ref
+                          .read(cartProvider.notifier)
+                          .decrementQty(item.product.id),
+                      onRemove: (item) => ref
+                          .read(cartProvider.notifier)
+                          .removeItem(item.product.id),
                     ),
                   ),
                 ],
               );
-            },
-          ),
+            }
+
+            return Row(
+              children: [
+                Expanded(flex: 65, child: _buildCatalogPanel(context)),
+                Container(width: 1, color: Theme.of(context).dividerColor),
+                Expanded(
+                  flex: 35,
+                  child: _CartPanel(
+                    cart: cart,
+                    cartTotal: cartTotal,
+                    cartVat: cartVat,
+                    cartNet: cartNet,
+                    isSubmitting: orderState.isLoading,
+                    onClear: () => ref.read(cartProvider.notifier).clear(),
+                    onCheckout: () => _checkout(cart),
+                    onIncrement: (item) => ref
+                        .read(cartProvider.notifier)
+                        .incrementQty(item.product.id),
+                    onDecrement: (item) => ref
+                        .read(cartProvider.notifier)
+                        .decrementQty(item.product.id),
+                    onRemove: (item) => ref
+                        .read(cartProvider.notifier)
+                        .removeItem(item.product.id),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -342,24 +337,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                               suffixIcon: IconButton(
                                 tooltip: 'Clear search',
                                 onPressed: () {
-                                  _searchController.clear();
-                                  ref
-                                          .read(
-                                            productSearchQueryProvider.notifier,
-                                          )
-                                          .state =
-                                      '';
+                                  _setSearchQuery('');
+                                  _resetScannerBuffer();
+                                  _scannerFocusNode.requestFocus();
                                 },
                                 icon: const Icon(Icons.close),
                               ),
                             ),
                             textInputAction: TextInputAction.search,
-                            onChanged: (value) {
-                              ref
-                                      .read(productSearchQueryProvider.notifier)
-                                      .state =
-                                  value;
-                            },
+                            onTapOutside: (_) =>
+                                _scannerFocusNode.requestFocus(),
+                            onChanged: (value) => _setSearchQuery(value),
                             onSubmitted: _handleBarcodeSubmit,
                           ),
                           const SizedBox(height: 8),
@@ -373,7 +361,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Tap a tile to add instantly. Press enter after scanning to match a SKU.',
+                                  'Scanner ready. HID scans auto-fill this field and press enter to match a SKU.',
                                   style: theme.textTheme.bodySmall,
                                 ),
                               ),
@@ -454,9 +442,8 @@ class _ProductGrid extends ConsumerWidget {
                   final product = products[i];
                   return ProductTile(
                     product: product,
-                    onTap: () {
-                      ref.read(cartProvider.notifier).addItem(product);
-                    },
+                    onTap: () =>
+                        ref.read(cartProvider.notifier).addItem(product),
                   );
                 },
               ),
