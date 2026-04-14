@@ -218,9 +218,9 @@ class OrderService {
           .toList();
 
       final merged = <String, Order>{
+        for (final localOrder in localOrders) localOrder.orderNo: localOrder,
         for (final remoteOrder in remoteOrders)
           remoteOrder.orderNo: remoteOrder,
-        for (final localOrder in localOrders) localOrder.orderNo: localOrder,
       };
 
       final orders = merged.values.toList()

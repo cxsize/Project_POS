@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { CreateIngredientDto } from './dto/create-ingredient.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { Ingredient } from './entities/ingredient.entity';
@@ -51,37 +55,58 @@ export class InventoryService {
     });
   }
 
-  async deductStock(productId: string, qty: number) {
-    const recipes = await this.recipesRepository.find({
+  async deductStock(productId: string, qty: number, manager?: EntityManager) {
+    const recipesRepository = this.getRecipesRepository(manager);
+    const ingredientsRepository = this.getIngredientsRepository(manager);
+    const recipes = await recipesRepository.find({
       where: { product_id: productId },
       relations: ['ingredient'],
     });
 
     for (const recipe of recipes) {
       const deduction = recipe.usage_qty * qty;
-      await this.ingredientsRepository
+      const result = await ingredientsRepository
         .createQueryBuilder()
         .update(Ingredient)
-        .set({ stock_qty: () => `stock_qty - ${deduction}` })
+        .set({ stock_qty: () => 'stock_qty - :deduction' })
         .where('id = :id', { id: recipe.ingredient_id })
+        .andWhere('stock_qty >= :deduction')
+        .setParameters({ deduction })
         .execute();
+
+      if ((result.affected ?? 0) === 0) {
+        throw new BadRequestException(
+          `Insufficient stock for ingredient ${recipe.ingredient_id}`,
+        );
+      }
     }
   }
 
-  async restoreStock(productId: string, qty: number) {
-    const recipes = await this.recipesRepository.find({
+  async restoreStock(productId: string, qty: number, manager?: EntityManager) {
+    const recipesRepository = this.getRecipesRepository(manager);
+    const ingredientsRepository = this.getIngredientsRepository(manager);
+    const recipes = await recipesRepository.find({
       where: { product_id: productId },
       relations: ['ingredient'],
     });
 
     for (const recipe of recipes) {
       const increment = recipe.usage_qty * qty;
-      await this.ingredientsRepository
+      await ingredientsRepository
         .createQueryBuilder()
         .update(Ingredient)
-        .set({ stock_qty: () => `stock_qty + ${increment}` })
+        .set({ stock_qty: () => 'stock_qty + :increment' })
         .where('id = :id', { id: recipe.ingredient_id })
+        .setParameters({ increment })
         .execute();
     }
+  }
+
+  private getIngredientsRepository(manager?: EntityManager) {
+    return manager?.getRepository(Ingredient) ?? this.ingredientsRepository;
+  }
+
+  private getRecipesRepository(manager?: EntityManager) {
+    return manager?.getRepository(Recipe) ?? this.recipesRepository;
   }
 }

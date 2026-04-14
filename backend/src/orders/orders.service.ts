@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CfdGatewayService } from '../cfd/cfd.gateway.service';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductsService } from '../products/products.service';
 import { OrderSyncQueueService } from '../queue/order-sync-queue.service';
@@ -64,43 +64,57 @@ export class OrdersService {
       }),
     );
 
-    const createdOrder = await this.dataSource.transaction(async (manager) => {
-      const totalAmount = this.roundCurrency(
-        resolvedItems.reduce((sum, item) => sum + item.subtotal, 0),
-      );
-      const discountAmount = this.resolveDiscountAmount(dto, totalAmount);
-      const vatRate = this.getVatRate();
-      const taxableAmount = Math.max(0, totalAmount - discountAmount);
-      const vatAmount = this.roundCurrency(taxableAmount * vatRate);
-      const netAmount = this.roundCurrency(
-        totalAmount - discountAmount + vatAmount,
-      );
+    let createdOrder: Order | null;
+    try {
+      createdOrder = await this.dataSource.transaction(async (manager) => {
+        const totalAmount = this.roundCurrency(
+          resolvedItems.reduce((sum, item) => sum + item.subtotal, 0),
+        );
+        const discountAmount = this.resolveDiscountAmount(dto, totalAmount);
+        const vatRate = this.getVatRate();
+        const taxableAmount = Math.max(0, totalAmount - discountAmount);
+        const vatAmount = this.roundCurrency(taxableAmount * vatRate);
+        const netAmount = this.roundCurrency(
+          totalAmount - discountAmount + vatAmount,
+        );
 
-      this.assertClientTotals(dto, { totalAmount, vatAmount, netAmount });
+        this.assertClientTotals(dto, { totalAmount, vatAmount, netAmount });
 
-      const order = manager.create(Order, {
-        order_no:
-          dto.order_no ??
-          `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        branch_id: dto.branch_id,
-        staff_id: dto.staff_id,
-        total_amount: totalAmount,
-        discount_amount: discountAmount,
-        vat_amount: vatAmount,
-        net_amount: netAmount,
+        const order = manager.create(Order, {
+          order_no:
+            dto.order_no ??
+            `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          branch_id: dto.branch_id,
+          staff_id: dto.staff_id,
+          total_amount: totalAmount,
+          discount_amount: discountAmount,
+          vat_amount: vatAmount,
+          net_amount: netAmount,
+        });
+        const savedOrder = await manager.save(order);
+
+        const orderItems = resolvedItems.map((item) =>
+          manager.create(OrderItem, { ...item, order_id: savedOrder.id }),
+        );
+        await manager.save(orderItems);
+
+        return manager.findOne(Order, {
+          where: { id: savedOrder.id },
+          relations: ['items'],
+        });
       });
-      const savedOrder = await manager.save(order);
-
-      const orderItems = resolvedItems.map((item) =>
-        manager.create(OrderItem, { ...item, order_id: savedOrder.id }),
-      );
-      await manager.save(orderItems);
-
-      return manager.findOne(Order, {
-        where: { id: savedOrder.id },
-        relations: ['items'],
-      });
-    });
+    } catch (error) {
+      if (dto.order_no && this.isUniqueConstraintError(error)) {
+        const existingOrder = await this.ordersRepository.findOne({
+          where: { order_no: dto.order_no },
+          relations: ['items', 'payments'],
+        });
+        if (existingOrder) {
+          return existingOrder;
+        }
+      }
+      throw error;
+    }
 
     if (createdOrder) {
       await this.publishCfdSnapshot(createdOrder.id);
@@ -126,76 +140,115 @@ export class OrdersService {
   }
 
   async addPayment(dto: CreatePaymentDto) {
-    const order = await this.findOne(dto.order_id);
+    const paymentResult = await this.dataSource.transaction(async (manager) => {
+      const order = await this.findOrderForUpdate(dto.order_id, manager);
 
-    if (order.payment_status === PaymentStatus.PAID) {
-      throw new BadRequestException('Order is already fully paid');
-    }
-    if (order.payment_status === PaymentStatus.VOID) {
-      throw new BadRequestException('Cannot pay for a voided order');
-    }
-
-    // Calculate total already paid
-    const totalPaid = order.payments.reduce(
-      (sum, p) => sum + Number(p.amount_received),
-      0,
-    );
-    const remaining = Number(order.net_amount) - totalPaid;
-
-    if (remaining <= 0) {
-      throw new BadRequestException('Order is already fully paid');
-    }
-
-    const payment = this.paymentsRepository.create(dto);
-    await this.paymentsRepository.save(payment);
-
-    const newTotalPaid = totalPaid + dto.amount_received;
-    const change = Math.max(
-      0,
-      Math.round((newTotalPaid - Number(order.net_amount)) * 100) / 100,
-    );
-
-    // Mark as paid if fully covered
-    if (newTotalPaid >= Number(order.net_amount)) {
-      await this.ordersRepository.update(order.id, {
-        payment_status: PaymentStatus.PAID,
-      });
-
-      // Deduct stock for each item in the order
-      for (const item of order.items) {
-        await this.inventoryService.deductStock(item.product_id, item.qty);
+      if (order.payment_status === PaymentStatus.PAID) {
+        throw new BadRequestException('Order is already fully paid');
+      }
+      if (order.payment_status === PaymentStatus.VOID) {
+        throw new BadRequestException('Cannot pay for a voided order');
       }
 
-      await this.orderSyncQueueService.enqueuePaidOrderSync(order.id);
-    }
+      const totalPaid = order.payments.reduce(
+        (sum, payment) => sum + Number(payment.amount_received),
+        0,
+      );
+      const remaining = Number(order.net_amount) - totalPaid;
 
-    const updatedOrder = await this.findOne(order.id);
-    await this.publishCfdSnapshot(order.id);
-    return { ...updatedOrder, change };
-  }
+      if (remaining <= 0) {
+        throw new BadRequestException('Order is already fully paid');
+      }
 
-  async voidOrder(id: string) {
-    const order = await this.findOne(id);
-    if (order.payment_status === PaymentStatus.VOID) {
-      throw new BadRequestException('Order is already void');
-    }
-    if (order.sync_status_acc) {
-      throw new BadRequestException(
-        'Cannot void order after accounting sync completed',
+      const payment = manager.create(Payment, dto);
+      await manager.save(payment);
+
+      const newTotalPaid = totalPaid + dto.amount_received;
+      const change = Math.max(
+        0,
+        this.roundCurrency(newTotalPaid - Number(order.net_amount)),
+      );
+
+      let shouldEnqueueSync = false;
+      if (newTotalPaid >= Number(order.net_amount)) {
+        await manager.update(Order, order.id, {
+          payment_status: PaymentStatus.PAID,
+        });
+
+        for (const item of order.items) {
+          await this.inventoryService.deductStock(
+            item.product_id,
+            item.qty,
+            manager,
+          );
+        }
+        shouldEnqueueSync = true;
+      }
+
+      const updatedOrder = await manager.findOne(Order, {
+        where: { id: order.id },
+        relations: ['items', 'payments'],
+      });
+      if (!updatedOrder) {
+        throw new NotFoundException(`Order ${order.id} not found`);
+      }
+
+      return {
+        order: updatedOrder,
+        change,
+        shouldEnqueueSync,
+      };
+    });
+
+    if (paymentResult.shouldEnqueueSync) {
+      await this.orderSyncQueueService.enqueuePaidOrderSync(
+        paymentResult.order.id,
       );
     }
 
-    if (order.payment_status === PaymentStatus.PAID) {
-      for (const item of order.items) {
-        await this.inventoryService.restoreStock(item.product_id, item.qty);
-      }
-    }
+    await this.publishCfdSnapshot(paymentResult.order.id);
+    return { ...paymentResult.order, change: paymentResult.change };
+  }
 
-    await this.ordersRepository.update(id, {
-      payment_status: PaymentStatus.VOID,
+  async voidOrder(id: string) {
+    const voidedOrder = await this.dataSource.transaction(async (manager) => {
+      const order = await this.findOrderForUpdate(id, manager);
+      if (order.payment_status === PaymentStatus.VOID) {
+        throw new BadRequestException('Order is already void');
+      }
+      if (order.sync_status_acc) {
+        throw new BadRequestException(
+          'Cannot void order after accounting sync completed',
+        );
+      }
+
+      if (order.payment_status === PaymentStatus.PAID) {
+        for (const item of order.items) {
+          await this.inventoryService.restoreStock(
+            item.product_id,
+            item.qty,
+            manager,
+          );
+        }
+      }
+
+      await manager.update(Order, id, {
+        payment_status: PaymentStatus.VOID,
+      });
+
+      const updatedOrder = await manager.findOne(Order, {
+        where: { id },
+        relations: ['items', 'payments'],
+      });
+      if (!updatedOrder) {
+        throw new NotFoundException(`Order ${id} not found`);
+      }
+
+      return updatedOrder;
     });
 
-    return this.findOne(id);
+    await this.publishCfdSnapshot(id);
+    return voidedOrder;
   }
 
   findUnsynced() {
@@ -295,6 +348,29 @@ export class OrdersService {
     return (
       Math.round((value + Number.EPSILON) * OrdersService.CURRENCY_PRECISION) /
       OrdersService.CURRENCY_PRECISION
+    );
+  }
+
+  private async findOrderForUpdate(id: string, manager: EntityManager) {
+    const order = await manager.findOne(Order, {
+      where: { id },
+      relations: ['items', 'payments'],
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${id} not found`);
+    }
+
+    return order;
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505'
     );
   }
 

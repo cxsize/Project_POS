@@ -8,6 +8,8 @@ import { QueueJobRecord, WebhookJobPayload } from './queue.types';
 
 @Injectable()
 export class WebhookRetryService {
+  private static readonly WEBHOOK_TIMEOUT_MS = 10_000;
+
   constructor(
     private readonly redisQueueService: RedisQueueService,
     @InjectRepository(Order)
@@ -28,6 +30,7 @@ export class WebhookRetryService {
       method: job.payload.method,
       headers: job.payload.headers,
       body: JSON.stringify(job.payload.body),
+      signal: AbortSignal.timeout(WebhookRetryService.WEBHOOK_TIMEOUT_MS),
     });
 
     if (!response.ok) {

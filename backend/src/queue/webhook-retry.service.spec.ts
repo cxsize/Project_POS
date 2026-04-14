@@ -15,9 +15,13 @@ describe('WebhookRetryService', () => {
 
   let service: WebhookRetryService;
   const originalFetch = global.fetch;
+  const originalAbortSignalTimeout = AbortSignal.timeout;
+  let timeoutSignal: AbortSignal;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    timeoutSignal = {} as AbortSignal;
+    AbortSignal.timeout = jest.fn().mockReturnValue(timeoutSignal);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -35,6 +39,7 @@ describe('WebhookRetryService', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    AbortSignal.timeout = originalAbortSignalTimeout;
   });
 
   it('marks orders synced after a successful webhook delivery', async () => {
@@ -65,6 +70,13 @@ describe('WebhookRetryService', () => {
     expect(ordersRepository.update).toHaveBeenCalledWith('order-1', {
       sync_status_acc: true,
     });
+    expect(AbortSignal.timeout).toHaveBeenCalledWith(10000);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://example.com/hooks/accounting',
+      expect.objectContaining({
+        signal: timeoutSignal,
+      }),
+    );
     expect(result).toEqual({
       statusCode: 200,
       syncedOrderId: 'order-1',

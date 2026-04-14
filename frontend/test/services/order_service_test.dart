@@ -127,6 +127,57 @@ void main() {
       expect(syncedOrder.payments.single.id, remotePaymentId);
     });
   });
+
+  group('OrderService getOrders merge', () {
+    test('prefers remote orders over stale local snapshots with the same orderNo', () async {
+      final orderNo = '8db2ce91-73c0-46c7-b4fd-7b7cc7d9fef5';
+      final remoteOrderId = 'b53817f2-c757-4f37-8d9d-6f7f8e5dcb6a';
+      final apiClient = FakeOrderApiClient(
+        postResponses: const {},
+        getResponses: {
+          '/orders': [
+            _buildOrderResponse(
+              id: remoteOrderId,
+              orderNo: orderNo,
+              paymentStatus: 'paid',
+              payments: [
+                {
+                  'id': 'payment-1',
+                  'order_id': remoteOrderId,
+                  'method': 'cash',
+                  'amount_received': 90.95,
+                  'ref_no': null,
+                },
+              ],
+            ),
+          ],
+        },
+      );
+      final localDatabase = InMemoryLocalDatabaseService();
+      await localDatabase.saveOrderSnapshot(
+        Order.fromJson(
+          _buildOrderResponse(
+            id: 'local-order-id',
+            orderNo: orderNo,
+            paymentStatus: 'pending',
+            payments: const [],
+          ),
+        ),
+      );
+      final service = OrderService(
+        apiClient,
+        localDatabase,
+        connectivityService: FakeConnectivityService(isOnline: true),
+      );
+
+      final orders = await service.getOrders();
+
+      expect(orders, hasLength(1));
+      expect(orders.single.orderNo, orderNo);
+      expect(orders.single.paymentStatus, 'paid');
+      expect(orders.single.id, remoteOrderId);
+    });
+  });
 }
 
 final _category = Category(
@@ -184,10 +235,14 @@ Map<String, dynamic> _buildOrderResponse({
 }
 
 class FakeOrderApiClient extends ApiClient {
-  FakeOrderApiClient({required this.postResponses})
+  FakeOrderApiClient({
+    required this.postResponses,
+    this.getResponses = const {},
+  })
     : super(baseUrl: 'http://fake.local/api/v1');
 
   final Map<String, List<Object>> postResponses;
+  final Map<String, Object> getResponses;
   final List<String> requestLog = [];
 
   @override
@@ -208,6 +263,15 @@ class FakeOrderApiClient extends ApiClient {
     }
 
     return next;
+  }
+
+  @override
+  Future<dynamic> get(String path, {bool retryOnUnauthorized = true}) async {
+    requestLog.add('GET $path');
+    if (!getResponses.containsKey(path)) {
+      throw StateError('Unexpected GET request: $path');
+    }
+    return getResponses[path];
   }
 }
 

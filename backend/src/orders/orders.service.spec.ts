@@ -5,9 +5,10 @@ import { CfdGatewayService } from '../cfd/cfd.gateway.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductsService } from '../products/products.service';
 import { OrderSyncQueueService } from '../queue/order-sync-queue.service';
+import { CreatePaymentDto } from './dto/create-payment.dto';
 import { OrderItem } from './entities/order-item.entity';
 import { Order, PaymentStatus } from './entities/order.entity';
-import { PaymentMethod } from './entities/payment.entity';
+import { Payment, PaymentMethod } from './entities/payment.entity';
 import { OrdersService } from './orders.service';
 
 type RepoMock<T extends object> = {
@@ -18,13 +19,19 @@ describe('OrdersService', () => {
   let service: OrdersService;
   let ordersRepository: RepoMock<Order>;
   let orderItemsRepository: RepoMock<OrderItem>;
-  let paymentsRepository: RepoMock<any>;
+  let paymentsRepository: RepoMock<Payment>;
   let dataSource: { transaction: jest.Mock };
   let productsService: { findOne: jest.Mock };
   let inventoryService: { deductStock: jest.Mock; restoreStock: jest.Mock };
   let configService: { get: jest.Mock };
   let orderSyncQueueService: { enqueuePaidOrderSync: jest.Mock };
   let cfdGatewayService: { publishOrderSnapshot: jest.Mock };
+  let transactionManager: {
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
+  };
 
   beforeEach(() => {
     ordersRepository = {
@@ -37,8 +44,16 @@ describe('OrdersService', () => {
       create: jest.fn(),
       save: jest.fn(),
     };
+    transactionManager = {
+      create: jest.fn((_: unknown, payload: object) => ({ ...payload })),
+      save: jest.fn(async (entity: unknown) => entity),
+      findOne: jest.fn(),
+      update: jest.fn(),
+    };
     dataSource = {
-      transaction: jest.fn(),
+      transaction: jest.fn(async (callback: typeof transactionCallback) =>
+        callback(transactionManager),
+      ),
     };
     productsService = {
       findOne: jest.fn(),
@@ -65,7 +80,7 @@ describe('OrdersService', () => {
     service = new OrdersService(
       ordersRepository as unknown as Repository<Order>,
       orderItemsRepository as unknown as Repository<OrderItem>,
-      paymentsRepository as unknown as Repository<any>,
+      paymentsRepository as unknown as Repository<Payment>,
       dataSource as unknown as DataSource,
       productsService as unknown as ProductsService,
       inventoryService as unknown as InventoryService,
@@ -77,35 +92,35 @@ describe('OrdersService', () => {
 
   it('creates an order with validated totals and publishes a CFD snapshot', async () => {
     productsService.findOne.mockResolvedValue({ base_price: 100 });
-    ordersRepository.findOne.mockResolvedValue({
-      id: 'order-1',
-      branch_id: 'branch-1',
-      items: [],
-      payments: [],
-    });
-
     const savedOrder = {
       id: 'order-1',
       order_no: 'ORD-fixed',
     };
     const reloadedOrder = {
       ...savedOrder,
-      items: [{ product_id: 'product-1', qty: 2, unit_price: 100, subtotal: 200 }],
+      items: [
+        {
+          product_id: 'product-1',
+          qty: 2,
+          unit_price: 100,
+          subtotal: 200,
+        },
+      ],
     };
-    const manager = {
-      create: jest.fn((_: unknown, payload: object) => ({ ...payload })),
-      save: jest.fn(async (entity: unknown) => {
-        if (Array.isArray(entity)) {
-          return entity;
-        }
-        return { ...entity, ...savedOrder };
-      }),
-      findOne: jest.fn().mockResolvedValue(reloadedOrder),
+    const publishedOrder = {
+      ...reloadedOrder,
+      branch_id: 'branch-1',
+      payments: [],
     };
-    dataSource.transaction.mockImplementation(
-      async (callback: (mgr: typeof manager) => Promise<unknown>) =>
-        callback(manager),
-    );
+
+    transactionManager.save.mockImplementation(async (entity: unknown) => {
+      if (Array.isArray(entity)) {
+        return entity;
+      }
+      return { ...entity, ...savedOrder };
+    });
+    transactionManager.findOne.mockResolvedValue(reloadedOrder);
+    ordersRepository.findOne.mockResolvedValue(publishedOrder);
 
     const result = await service.create({
       branch_id: 'branch-1',
@@ -119,7 +134,7 @@ describe('OrdersService', () => {
     });
 
     expect(productsService.findOne).toHaveBeenCalledWith('product-1');
-    expect(manager.create).toHaveBeenNthCalledWith(
+    expect(transactionManager.create).toHaveBeenNthCalledWith(
       1,
       Order,
       expect.objectContaining({
@@ -135,12 +150,32 @@ describe('OrdersService', () => {
     expect(cfdGatewayService.publishOrderSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it('returns the existing order when create hits a unique order_no race', async () => {
+    productsService.findOne.mockResolvedValue({ base_price: 100 });
+    const existingOrder = {
+      id: 'existing-order',
+      order_no: '840f2191-8679-437a-8099-a67ef5559344',
+      items: [],
+      payments: [],
+    };
+
+    ordersRepository.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existingOrder);
+    dataSource.transaction.mockRejectedValue({ code: '23505' });
+
+    await expect(
+      service.create({
+        order_no: existingOrder.order_no,
+        branch_id: 'branch-1',
+        staff_id: 'staff-1',
+        items: [{ product_id: 'product-1', qty: 1 }],
+      }),
+    ).resolves.toEqual(existingOrder);
+  });
+
   it('rejects when client totals do not match server-calculated totals', async () => {
     productsService.findOne.mockResolvedValue({ base_price: 100 });
-    dataSource.transaction.mockImplementation(
-      async (callback: (manager: unknown) => Promise<unknown>) =>
-        callback({}),
-    );
 
     await expect(
       service.create({
@@ -179,16 +214,13 @@ describe('OrdersService', () => {
     const publishedOrder = {
       ...updatedOrder,
       branch_id: 'branch-1',
-      items: [],
     };
-    ordersRepository.findOne
+
+    transactionManager.findOne
       .mockResolvedValueOnce(existingOrder)
-      .mockResolvedValueOnce(updatedOrder)
-      .mockResolvedValueOnce(publishedOrder);
-    paymentsRepository.create.mockImplementation((dto: object) => dto);
-    paymentsRepository.save.mockResolvedValue(undefined);
-    ordersRepository.update.mockResolvedValue(undefined);
-    inventoryService.deductStock.mockResolvedValue(undefined);
+      .mockResolvedValueOnce(updatedOrder);
+    transactionManager.update.mockResolvedValue(undefined);
+    ordersRepository.findOne.mockResolvedValue(publishedOrder);
     orderSyncQueueService.enqueuePaidOrderSync.mockResolvedValue(undefined);
 
     const result = await service.addPayment({
@@ -197,18 +229,20 @@ describe('OrdersService', () => {
       amount_received: 100,
     });
 
-    expect(ordersRepository.update).toHaveBeenCalledWith('order-1', {
+    expect(transactionManager.update).toHaveBeenCalledWith(Order, 'order-1', {
       payment_status: PaymentStatus.PAID,
     });
     expect(inventoryService.deductStock).toHaveBeenNthCalledWith(
       1,
       'product-1',
       2,
+      transactionManager,
     );
     expect(inventoryService.deductStock).toHaveBeenNthCalledWith(
       2,
       'product-2',
       1,
+      transactionManager,
     );
     expect(orderSyncQueueService.enqueuePaidOrderSync).toHaveBeenCalledWith(
       'order-1',
@@ -232,14 +266,12 @@ describe('OrdersService', () => {
     const publishedOrder = {
       ...updatedOrder,
       branch_id: 'branch-1',
-      items: [],
     };
-    ordersRepository.findOne
+
+    transactionManager.findOne
       .mockResolvedValueOnce(existingOrder)
-      .mockResolvedValueOnce(updatedOrder)
-      .mockResolvedValueOnce(publishedOrder);
-    paymentsRepository.create.mockImplementation((dto: object) => dto);
-    paymentsRepository.save.mockResolvedValue(undefined);
+      .mockResolvedValueOnce(updatedOrder);
+    ordersRepository.findOne.mockResolvedValue(publishedOrder);
 
     const result = await service.addPayment({
       order_id: 'order-1',
@@ -247,14 +279,14 @@ describe('OrdersService', () => {
       amount_received: 30,
     });
 
-    expect(ordersRepository.update).not.toHaveBeenCalled();
+    expect(transactionManager.update).not.toHaveBeenCalled();
     expect(inventoryService.deductStock).not.toHaveBeenCalled();
     expect(orderSyncQueueService.enqueuePaidOrderSync).not.toHaveBeenCalled();
     expect(result).toEqual({ ...updatedOrder, change: 0 });
   });
 
   it('rejects voiding an order that already synced to accounting', async () => {
-    ordersRepository.findOne.mockResolvedValue({
+    transactionManager.findOne.mockResolvedValue({
       id: 'order-1',
       payment_status: PaymentStatus.PAID,
       sync_status_acc: true,
@@ -266,7 +298,40 @@ describe('OrdersService', () => {
       BadRequestException,
     );
     expect(inventoryService.restoreStock).not.toHaveBeenCalled();
-    expect(ordersRepository.update).not.toHaveBeenCalled();
+    expect(transactionManager.update).not.toHaveBeenCalled();
+  });
+
+  it('voids a paid order atomically and restores stock through the manager', async () => {
+    const paidOrder = {
+      id: 'order-1',
+      payment_status: PaymentStatus.PAID,
+      sync_status_acc: false,
+      items: [{ product_id: 'product-1', qty: 2 }],
+      payments: [{ amount_received: 100 }],
+    };
+    const voidedOrder = {
+      ...paidOrder,
+      payment_status: PaymentStatus.VOID,
+    };
+    const publishedOrder = {
+      ...voidedOrder,
+      branch_id: 'branch-1',
+    };
+
+    transactionManager.findOne
+      .mockResolvedValueOnce(paidOrder)
+      .mockResolvedValueOnce(voidedOrder);
+    ordersRepository.findOne.mockResolvedValue(publishedOrder);
+
+    await expect(service.voidOrder('order-1')).resolves.toEqual(voidedOrder);
+    expect(inventoryService.restoreStock).toHaveBeenCalledWith(
+      'product-1',
+      2,
+      transactionManager,
+    );
+    expect(transactionManager.update).toHaveBeenCalledWith(Order, 'order-1', {
+      payment_status: PaymentStatus.VOID,
+    });
   });
 
   it('finds paid orders that are still unsynced', async () => {
@@ -280,3 +345,12 @@ describe('OrdersService', () => {
     });
   });
 });
+
+type transactionCallback = (
+  manager: {
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
+  },
+) => Promise<unknown>;
