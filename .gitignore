@@ -2,4 +2,4 @@ backoffice/.next
 backoffice/node_modules
 backoffice/.env.local
 backoffice/.env*.local
-
+backoffice/*.tsbuildinfo
