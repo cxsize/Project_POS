@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,8 @@ import { loginSchema } from '@/lib/auth/schema';
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,8 +31,23 @@ export function LoginForm() {
     setIsPending(true);
 
     try {
-      // POS-30 will wire this to a server action that persists the JWT cookie.
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(parsed.data)
+      });
+
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(payload.message ?? 'Invalid credentials');
+        return;
+      }
+
+      const nextPath = searchParams.get('next');
+      router.replace(nextPath || '/dashboard');
+      router.refresh();
     } finally {
       setIsPending(false);
     }
@@ -56,6 +74,11 @@ export function LoginForm() {
           autoComplete="current-password"
         />
       </div>
+      {searchParams.get('reason') === 'forbidden' ? (
+        <p className="text-sm text-destructive">
+          Cashier accounts cannot access the backoffice.
+        </p>
+      ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" className="w-full" disabled={isPending}>
         {isPending ? (
