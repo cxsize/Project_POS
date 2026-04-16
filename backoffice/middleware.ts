@@ -6,7 +6,7 @@ import { decodeSession } from '@/lib/auth/session';
 const protectedPrefixes = ['/dashboard'];
 const blockedRoles = new Set(['cashier']);
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isProtectedRoute = protectedPrefixes.some((prefix) =>
     pathname.startsWith(prefix)
@@ -17,7 +17,7 @@ export function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(env.AUTH_COOKIE_NAME)?.value;
-  const session = token ? decodeSession(token) : null;
+  const session = token ? await decodeSession(token) : null;
 
   if (!session) {
     const loginUrl = new URL('/login', request.url);
@@ -35,4 +35,3 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: ['/dashboard/:path*']
 };
-

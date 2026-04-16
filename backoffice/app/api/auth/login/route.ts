@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   try {
     const response = await loginRequest(parsed.data);
-    const session = encodeSession({
+    const session = await encodeSession({
       accessToken: response.access_token,
       refreshToken: response.refresh_token,
       username: response.user.username,
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     cookies().set(env.AUTH_COOKIE_NAME, session, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       path: '/',
       maxAge: 60 * 60 * 8
     });
@@ -46,4 +46,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ message }, { status: 401 });
   }
 }
-

@@ -4,7 +4,7 @@ import { LogoutButton } from '@/components/auth/logout-button';
 import { getSessionFromCookieStore } from '@/lib/auth/session';
 
 export default async function DashboardPage() {
-  const session = getSessionFromCookieStore(cookies());
+  const session = await getSessionFromCookieStore(cookies());
   if (!session) {
     redirect('/login');
   }

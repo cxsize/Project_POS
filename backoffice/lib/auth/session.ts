@@ -1,3 +1,5 @@
+import { jwtVerify, SignJWT } from 'jose';
+import { z } from 'zod';
 import { env } from '@/lib/env';
 import type { Session } from '@/types/auth';
 
@@ -5,20 +7,43 @@ type CookieReader = {
   get(name: string): { value: string } | undefined;
 };
 
-export function encodeSession(session: Session) {
-  return Buffer.from(JSON.stringify(session), 'utf8').toString('base64url');
+const sessionSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+  username: z.string(),
+  fullName: z.string().nullable(),
+  role: z.enum(['admin', 'manager', 'cashier']),
+  branchId: z.string().nullable()
+});
+
+const encoder = new TextEncoder();
+const sessionIssuer = 'project-pos-backoffice';
+const sessionAudience = 'project-pos-backoffice';
+
+export async function encodeSession(session: Session) {
+  return new SignJWT(sessionSchema.parse(session))
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer(sessionIssuer)
+    .setAudience(sessionAudience)
+    .setIssuedAt()
+    .setExpirationTime('8h')
+    .sign(encoder.encode(env.JWT_SECRET));
 }
 
-export function decodeSession(value: string): Session | null {
+export async function decodeSession(value: string): Promise<Session | null> {
   try {
-    const json = Buffer.from(value, 'base64url').toString('utf8');
-    return JSON.parse(json) as Session;
+    const { payload } = await jwtVerify(value, encoder.encode(env.JWT_SECRET), {
+      issuer: sessionIssuer,
+      audience: sessionAudience
+    });
+
+    return sessionSchema.parse(payload);
   } catch {
     return null;
   }
 }
 
-export function getSessionFromCookieStore(
+export async function getSessionFromCookieStore(
   cookieStore: CookieReader
 ) {
   const cookieValue = cookieStore.get(env.AUTH_COOKIE_NAME)?.value;

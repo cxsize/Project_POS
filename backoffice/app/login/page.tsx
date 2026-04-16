@@ -3,8 +3,8 @@ import { redirect } from 'next/navigation';
 import { LoginForm } from '@/components/auth/login-form';
 import { getSessionFromCookieStore } from '@/lib/auth/session';
 
-export default function LoginPage() {
-  const session = getSessionFromCookieStore(cookies());
+export default async function LoginPage() {
+  const session = await getSessionFromCookieStore(cookies());
   if (session && session.role !== 'cashier') {
     redirect('/dashboard');
   }
