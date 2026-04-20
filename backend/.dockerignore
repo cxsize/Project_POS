@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+.env
+.env.production
+npm-debug.log
+nginx/certs/*.pem

@@ -6,6 +6,7 @@ dist/
 
 # Environment
 .env
+.env.production
 
 # IDE
 .idea/
@@ -22,3 +23,6 @@ coverage/
 
 # Logs
 *.log
+
+# TLS certificates
+nginx/certs/*.pem
